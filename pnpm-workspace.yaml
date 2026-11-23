@@ -1,0 +1,7 @@
+# Hoisted layout = no symlinks in node_modules, so the OpenNext build also works on Windows without Developer Mode.
+nodeLinker: hoisted
+allowBuilds:
+  core-js: false
+  esbuild: true
+  sharp: true
+  workerd: true

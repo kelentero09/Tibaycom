@@ -1,0 +1,30 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "tibay",
+  "main": "./custom-worker.ts",
+  "compatibility_date": "2026-11-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": { "directory": ".open-next/assets", "binding": "ASSETS" },
+  "services": [{ "binding": "WORKER_SELF_REFERENCE", "service": "tibay" }],
+  "observability": { "enabled": true },
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "tibay",
+      // Replace with the id printed by `wrangler d1 create tibay` (see DEPLOYMENT.md).
+      "database_id": "00000000-0000-0000-0000-000000000000",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "BUCKET", "bucket_name": "tibay-media" }],
+  // 18:15 UTC = 02:15 Asia/Manila — daily expiry sweep, renewal reminders, orphan cleanup.
+  "triggers": { "crons": ["15 18 * * *"] },
+  // Non-secret configuration only. Secrets go in `.dev.vars` locally and `wrangler secret put` in production.
+  "vars": {
+    "APP_ENV": "development",
+    "PUBLIC_SITE_URL": "http://localhost:3000",
+    "SUPPORT_EMAIL": "support@example.com",
+    "EMAIL_FROM": "Tibay <no-reply@example.com>",
+    "TURNSTILE_SITE_KEY": "1x00000000000000000000AA"
+  }
+}

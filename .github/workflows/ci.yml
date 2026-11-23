@@ -1,0 +1,79 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Lint, typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Generate Cloudflare binding types
+        run: pnpm cf-typegen
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - name: Unit and integration tests
+        run: pnpm test
+      - name: Build (Next.js + Cloudflare Worker bundle)
+        run: pnpm exec opennextjs-cloudflare build
+      - name: Worker bundle dry run (reports compressed size)
+        run: pnpm exec wrangler deploy --dry-run --outdir .wrangler/dry-run
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - name: Local secrets for the test server (non-production, generated per run)
+        run: |
+          {
+            echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)"
+            echo "TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA"
+            echo "RESEND_API_KEY="
+            echo "PAYMONGO_SECRET_KEY="
+            echo "PAYMONGO_WEBHOOK_SECRET=whsk_ci"
+            echo "CRON_SECRET=$(openssl rand -hex 32)"
+            echo "NEXTJS_ENV=development"
+          } > .dev.vars
+      - run: pnpm cf-typegen
+      - name: Build the Worker bundle under test
+        run: pnpm build:worker
+      - run: pnpm db:migrate:local
+      - run: pnpm db:seed
+      - run: pnpm test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report
+          retention-days: 7
