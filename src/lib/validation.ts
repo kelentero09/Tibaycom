@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import locations from '@/data/ph-locations.json';
-import { isProfession, MAX_PROFESSIONS, MAX_SPECIALIZATIONS, specializationsFor } from './professions';
+import { isCustomProfession, isProfession, MAX_PROFESSIONS, MAX_SPECIALIZATIONS, specializationsFor } from './professions';
 
 export const LOCATIONS = locations as Record<string, string[]>;
 export const PROVINCES = Object.keys(LOCATIONS);
@@ -54,8 +54,9 @@ const professions = z
   .array(z.string())
   .min(1, 'Choose at least one profession')
   .max(MAX_PROFESSIONS, `Choose up to ${MAX_PROFESSIONS} professions`)
-  .refine((list) => list.every(isProfession), 'Unknown profession')
-  .transform((list) => [...new Set(list)]);
+  // Either a listed profession or one the user typed under "Other".
+  .refine((list) => list.every((p) => isProfession(p) || isCustomProfession(p)), 'Use letters and numbers only for a custom profession (2–40 characters)')
+  .transform((list) => [...new Map(list.map((p) => [p.toLowerCase(), p])).values()]);
 
 const location = {
   province: z.string().refine((p) => p in LOCATIONS, 'Choose a province'),

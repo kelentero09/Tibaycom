@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/ui/misc';
 import { professionLabel } from '@/lib/professions';
 import { directoryQuerySchema } from '@/lib/validation';
+import { getT } from '@/server/locale';
 import { searchDirectory } from '@/server/profiles';
 
 type Props = { searchParams: Promise<Record<string, string | string[] | undefined>> };
@@ -31,7 +32,7 @@ export async function generateMetadata({ searchParams }: Props): Promise<Metadat
 
 export default async function DirectoryPage({ searchParams }: Props) {
   const query = await parse(searchParams);
-  const { results, hasMore } = await searchDirectory(query);
+  const [{ results, hasMore }, t] = await Promise.all([searchDirectory(query), getT()]);
   const pageHref = (page: number) => {
     const params = new URLSearchParams(Object.entries({ ...query, page: page > 1 ? String(page) : '' }).filter(([, v]) => v) as [string, string][]);
     return `/directory${params.size ? `?${params}` : ''}`;
@@ -40,8 +41,8 @@ export default async function DirectoryPage({ searchParams }: Props) {
   return (
     <div className="container-page grid gap-6 py-8">
       <div className="grid gap-1">
-        <h1 className="text-2xl font-semibold sm:text-3xl">Find construction professionals</h1>
-        <p className="text-muted-foreground">Contractors, architects, engineers and skilled workers across the Philippines.</p>
+        <h1 className="text-2xl font-semibold sm:text-3xl">{t.directory.title}</h1>
+        <p className="text-muted-foreground">{t.directory.subtitle}</p>
       </div>
       <DirectoryFilters
         key={JSON.stringify(query)}
@@ -50,8 +51,8 @@ export default async function DirectoryPage({ searchParams }: Props) {
       {results.length === 0 ? (
         <EmptyState
           icon={<SearchX />}
-          title="No professionals match your search"
-          description="Try a nearby city, a different profession, or clear the filters."
+          title={t.directory.emptyTitle}
+          description={t.directory.emptyBody}
           action={
             <Button asChild variant="outline">
               <Link href="/directory">Clear filters</Link>
@@ -60,8 +61,8 @@ export default async function DirectoryPage({ searchParams }: Props) {
         />
       ) : (
         <ul className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {results.map((pro) => (
-            <li key={pro.id}>
+          {results.map((pro, index) => (
+            <li key={pro.id} className="stagger" style={{ '--i': index } as React.CSSProperties}>
               <ProfessionalCard pro={pro} />
             </li>
           ))}

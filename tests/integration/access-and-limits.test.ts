@@ -128,33 +128,61 @@ describe('quotation integrity', () => {
 });
 
 describe('plan limits cannot be bypassed', () => {
-  it('caps Free at 3 projects, even under concurrent requests', async () => {
+  it('caps Free at 2 projects, even under concurrent requests', async () => {
     const results = await Promise.all(Array.from({ length: 8 }, () => call(createProject, { as: 'carol', body: project })));
-    expect(results.filter((r) => r.status === 200)).toHaveLength(3);
-    expect(results.filter((r) => r.status === 402)).toHaveLength(5);
-    expect(await count("SELECT COUNT(*) AS n FROM projects WHERE profile_id = 'profile-carol'")).toBe(3);
+    expect(results.filter((r) => r.status === 200)).toHaveLength(2);
+    expect(results.filter((r) => r.status === 402)).toHaveLength(6);
+    expect(await count("SELECT COUNT(*) AS n FROM projects WHERE profile_id = 'profile-carol'")).toBe(2);
   });
 
-  it('caps Free at 3 quotations per month, even under concurrent requests, and deleting does not refund quota', async () => {
+  it('caps Free at 2 quotations per month, even under concurrent requests, and deleting does not refund quota', async () => {
     const results = await Promise.all(Array.from({ length: 8 }, () => call(createQuotationRoute, { as: 'carol', body: quotation })));
     const ok = results.filter((r) => r.status === 200);
-    expect(ok).toHaveLength(3);
-    expect(results.filter((r) => r.status === 402)).toHaveLength(5);
-    expect(new Set(ok.map((r) => r.data.number)).size).toBe(3);
+    expect(ok).toHaveLength(2);
+    expect(results.filter((r) => r.status === 402)).toHaveLength(6);
+    expect(new Set(ok.map((r) => r.data.number)).size).toBe(2);
 
     await call(deleteQuotationRoute, { as: 'carol', method: 'DELETE', params: { id: String(ok[0]!.data.id) } });
     expect((await call(createQuotationRoute, { as: 'carol', body: quotation })).status).toBe(402);
     expect((await call(duplicateQuotationRoute, { as: 'carol', params: { id: String(ok[1]!.data.id) } })).status).toBe(402);
   });
 
-  it('caps Free at 10 photos in total', async () => {
+  it('caps Free at 2 photos per project, even under concurrent uploads', async () => {
     const projects = await env.DB.prepare("SELECT id FROM projects WHERE profile_id = 'profile-carol'").all<{ id: string }>();
     const [first, second] = projects.results;
+    // Six uploads race into the first project: exactly two may land.
+    const burst = await Promise.all(Array.from({ length: 6 }, (_, i) => call(uploadPhoto, { as: 'carol', raw: i % 2 ? PNG : WEBP, params: { id: first!.id } })));
+    expect(burst.filter((r) => r.status === 200)).toHaveLength(2);
+    expect(burst.filter((r) => r.status === 402)).toHaveLength(4);
+    expect(await count('SELECT COUNT(*) AS n FROM project_photos WHERE project_id = ?', first!.id)).toBe(2);
+    // The limit is per project: the second project still has its own two slots.
+    const second1 = await call(uploadPhoto, { as: 'carol', raw: PNG, params: { id: second!.id } });
+    const second2 = await call(uploadPhoto, { as: 'carol', raw: WEBP, params: { id: second!.id } });
+    const second3 = await call(uploadPhoto, { as: 'carol', raw: PNG, params: { id: second!.id } });
+    expect([second1.status, second2.status, second3.status]).toEqual([200, 200, 402]);
+    // Rejected uploads leave nothing behind in storage.
+    expect((await env.BUCKET.list({ prefix: 'project/carol/' })).objects).toHaveLength(4);
+  });
+
+  it('gives Premium 50 projects, 10 photos per project and unlimited quotations', async () => {
+    await createUser('prem');
+    await createProfile('prem');
+    await setSubscription('prem', { endsInDays: 30 });
+    const created = await call(createProject, { as: 'prem', body: project });
     const uploads = [];
-    for (let i = 0; i < 12; i++) uploads.push(await call(uploadPhoto, { as: 'carol', raw: i % 2 ? PNG : WEBP, params: { id: i < 6 ? first!.id : second!.id } }));
-    expect(uploads.filter((r) => r.status === 200)).toHaveLength(10);
-    expect(uploads.slice(10).every((r) => r.status === 402)).toBe(true);
-    expect(await count("SELECT COUNT(*) AS n FROM project_photos WHERE profile_id = 'profile-carol'")).toBe(10);
+    for (let i = 0; i < 11; i++) uploads.push((await call(uploadPhoto, { as: 'prem', raw: PNG, params: { id: String(created.data.id) } })).status);
+    expect(uploads.filter((s) => s === 200)).toHaveLength(10);
+    expect(uploads[10]).toBe(402);
+
+    const quotes = await Promise.all(Array.from({ length: 12 }, () => call(createQuotationRoute, { as: 'prem', body: quotation })));
+    expect(quotes.every((r) => r.status === 200)).toBe(true);
+    expect(new Set(quotes.map((r) => r.data.number)).size).toBe(12); // still numbered uniquely under concurrency
+
+    // 50 projects: fill to the limit directly, then the API must refuse the 51st.
+    const now = Date.now();
+    for (let i = 0; i < 49; i++) await env.DB.prepare("INSERT INTO projects (id, profile_id, title, created_at, updated_at) VALUES (?, 'profile-prem', 'Bulk', ?, ?)").bind(`bulk-${i}`, now, now).run();
+    expect((await call(createProject, { as: 'prem', body: project })).status).toBe(402);
+    expect(await count("SELECT COUNT(*) AS n FROM projects WHERE profile_id = 'profile-prem'")).toBe(50);
   });
 
   it('refuses the Premium-only cover photo on Free but allows avatar and logo', async () => {
@@ -190,12 +218,19 @@ describe('plan limits cannot be bypassed', () => {
   });
 
   it('applies admin-configured limits immediately', async () => {
-    const config = { pricing: { monthly: 19_900, annual: 199_000 }, renewalReminderDays: 5, limits: { free: { projects: 1, photos: 10, quotationsPerMonth: 3, customQuotationBranding: false, quotationHistory: false, customCoverPhoto: false, removePlatformBranding: false }, premium: { projects: 20, photos: 100, quotationsPerMonth: 50, customQuotationBranding: true, quotationHistory: true, customCoverPhoto: true, removePlatformBranding: true } } };
+    const config = { pricing: { monthly: 19_900, annual: 199_000 }, renewalReminderDays: 5, limits: { free: { projects: 1, photosPerProject: 1, quotationsPerMonth: 1, customQuotationBranding: false, quotationHistory: false, customCoverPhoto: false, removePlatformBranding: false }, premium: { projects: 50, photosPerProject: 10, quotationsPerMonth: null, customQuotationBranding: true, quotationHistory: true, customCoverPhoto: true, removePlatformBranding: true } } };
     expect((await call(adminAction, { as: 'admin', body: config, params: { action: 'settings.plans' } })).status).toBe(200);
     await createUser('gina');
     await createProfile('gina');
-    expect((await call(createProject, { as: 'gina', body: project })).status).toBe(200);
+    const only = await call(createProject, { as: 'gina', body: project });
+    expect(only.status).toBe(200);
     expect((await call(createProject, { as: 'gina', body: project })).status).toBe(402);
+    expect((await call(uploadPhoto, { as: 'gina', raw: PNG, params: { id: String(only.data.id) } })).status).toBe(200);
+    expect((await call(uploadPhoto, { as: 'gina', raw: PNG, params: { id: String(only.data.id) } })).status).toBe(402);
+    expect((await call(createQuotationRoute, { as: 'gina', body: quotation })).status).toBe(200);
+    expect((await call(createQuotationRoute, { as: 'gina', body: quotation })).status).toBe(402);
+    // The old settings shape (before per-project photo limits) is rejected rather than half-applied.
+    expect((await call(adminAction, { as: 'admin', body: { ...config, limits: { ...config.limits, free: { ...config.limits.free, photosPerProject: undefined, photos: 10 } } }, params: { action: 'settings.plans' } })).status).toBe(422);
     await env.DB.prepare("DELETE FROM settings WHERE key = 'plans'").run();
   });
 });
@@ -254,14 +289,14 @@ describe('malicious uploads', () => {
     expect(later.deleted).toBe(1);
     const avatar = (await one<{ avatar_key: string }>("SELECT avatar_key FROM profiles WHERE user_id = 'bob'"))!.avatar_key;
     expect(await env.BUCKET.head(avatar)).not.toBeNull();
-    expect(await count("SELECT COUNT(*) AS n FROM project_photos WHERE profile_id = 'profile-carol'")).toBe(10);
+    expect(await count("SELECT COUNT(*) AS n FROM project_photos WHERE profile_id = 'profile-carol'")).toBe(4);
   });
 });
 
 describe('public forms', () => {
   const inquiry = { name: 'Client Name', contact: '0917 000 0000', message: 'I need a quotation for a small house.', turnstileToken: 'token' };
 
-  it('delivers a quotation request by email without storing it', async () => {
+  it('delivers a quotation request to the professional by email', async () => {
     outbound.emails.length = 0;
     const response = await call(sendInquiry, { body: inquiry, params: { username: 'pro-alice' } });
     expect(response.status).toBe(200);

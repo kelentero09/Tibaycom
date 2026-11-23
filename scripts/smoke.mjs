@@ -1,5 +1,7 @@
 // End-to-end smoke test over HTTP against a running instance seeded with `pnpm db:seed`.
 // Usage: node scripts/smoke.mjs [baseUrl]     (default http://localhost:8787 = `wrangler dev` on the built Worker)
+// Start the Worker on the SEPARATE test database first (never your dev data):
+//   pnpm e2e:prepare && pnpm e2e:serve
 // Requires local mock-payment mode (no PayMongo key) and the Turnstile test secret.
 const BASE = process.argv[2] ?? 'http://localhost:8787';
 const PASSWORD = 'tibay-dev-password';
@@ -74,13 +76,15 @@ check('non-admin API is 403', (await free('/api/admin/export/users')).status ===
 check('non-admin page is redirected', [302, 303, 307].includes((await free('/admin')).status));
 
 const projectA = await free('/api/projects', { method: 'POST', body: { title: 'Smoke project', description: 'Created by smoke test', location: 'Cebu', year: 2026 } });
-check('create 3rd project (Free allows 3)', projectA.status === 200, projectA.text);
-check('4th project blocked by plan', (await free('/api/projects', { method: 'POST', body: { title: 'Too many', description: '', location: '', year: null } })).status === 402);
+check('create 2nd project (Free allows 2)', projectA.status === 200, projectA.text);
+check('3rd project blocked by plan', (await free('/api/projects', { method: 'POST', body: { title: 'Too many', description: '', location: '', year: null } })).status === 402);
 
 const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==', 'base64');
 const photo = await free(`/api/projects/${projectA.json?.id}/photos`, { method: 'POST', raw: png });
 check('upload photo to R2', photo.status === 200, photo.text);
 const image = await anon(photo.json?.url ?? '/img/none');
+check('2nd photo in the project allowed', (await free(`/api/projects/${projectA.json?.id}/photos`, { method: 'POST', raw: png })).status === 200);
+check('3rd photo in the project blocked by plan (2 per project)', (await free(`/api/projects/${projectA.json?.id}/photos`, { method: 'POST', raw: png })).status === 402);
 check('photo served with safe headers', image.status === 200 && image.headers.get('content-type') === 'image/png' && image.headers.get('cache-control')?.includes('immutable'), `${image.status}`);
 check('SVG upload rejected', (await free('/api/profile/image?kind=avatar', { method: 'PUT', raw: Buffer.from('<svg onload="alert(1)"/>') })).status === 415);
 check('cover photo is Premium-only', (await free('/api/profile/image?kind=cover', { method: 'PUT', raw: png })).status === 402);
@@ -89,9 +93,8 @@ const quote = { clientName: 'Smoke Client', issueDate: '2026-11-23', validUntil:
 const q1 = await free('/api/quotations', { method: 'POST', body: quote });
 check('create quotation', q1.status === 200 && /^Q-\d{6}-001$/.test(q1.json?.number ?? ''), q1.text);
 check('quotation page shows server total ₱10,503.36', (await free(`/quotations/${q1.json?.id}`)).text.includes('10,503.36'));
-await free('/api/quotations', { method: 'POST', body: quote });
-check('duplicate uses quota (3rd)', (await free(`/api/quotations/${q1.json?.id}/duplicate`, { method: 'POST' })).status === 200);
-check('4th quotation this month blocked', (await free('/api/quotations', { method: 'POST', body: quote })).status === 402);
+check('duplicate uses quota (2nd)', (await free(`/api/quotations/${q1.json?.id}/duplicate`, { method: 'POST' })).status === 200);
+check('3rd quotation this month blocked', (await free('/api/quotations', { method: 'POST', body: quote })).status === 402);
 
 // Another user cannot touch it
 const other = await login('expired@tibay.test');
@@ -107,8 +110,11 @@ check('still Free before payment', (await free('/api/projects', { method: 'POST'
 const paid = await free('/api/dev/mock-pay', { method: 'POST', body: { paymentId: checkout.json?.paymentId, outcome: 'paid' } });
 check('simulated payment applied', paid.json?.result === 'applied', paid.text);
 check('replayed payment is a no-op', (await free('/api/dev/mock-pay', { method: 'POST', body: { paymentId: checkout.json?.paymentId, outcome: 'paid' } })).json?.result === 'already_applied');
-check('Premium unlocked: 4th project allowed', (await free('/api/projects', { method: 'POST', body: { title: 'Premium project', description: '', location: '', year: null } })).status === 200);
+check('Premium unlocked: 3rd project allowed', (await free('/api/projects', { method: 'POST', body: { title: 'Premium project', description: '', location: '', year: null } })).status === 200);
 check('Premium unlocked: cover photo allowed', (await free('/api/profile/image?kind=cover', { method: 'PUT', raw: png })).status === 200);
+check('Premium unlocked: 3rd photo in a project allowed', (await free(`/api/projects/${projectA.json?.id}/photos`, { method: 'POST', raw: png })).status === 200);
+const manyQuotes = await Promise.all(Array.from({ length: 5 }, () => free('/api/quotations', { method: 'POST', body: quote })));
+check('Premium unlocked: quotations are unlimited', manyQuotes.every((r) => r.status === 200));
 check('subscription page shows Premium', (await free('/account/subscription')).text.includes('Premium is active until'));
 
 console.log(failures ? `\n${failures} check(s) FAILED` : '\nAll smoke checks passed');

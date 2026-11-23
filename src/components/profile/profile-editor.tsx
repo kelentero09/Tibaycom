@@ -5,9 +5,10 @@ import { useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, errorMessage } from '@/lib/api-client';
-import { MAX_PROFESSIONS, MAX_SPECIALIZATIONS, PROFESSIONS, specializationsFor } from '@/lib/professions';
+import { MAX_SPECIALIZATIONS, specializationsFor } from '@/lib/professions';
 import type { ProfileUpdateInput } from '@/lib/validation';
 import { ChipSelect, LocationFields, useLocations } from '../location-fields';
+import { ProfessionPicker } from '../profession-picker';
 import { Button } from '../ui/button';
 import { Dialog, DialogContent, DialogTrigger } from '../ui/dialog';
 import { Field, Input, Select, Textarea } from '../ui/form';
@@ -70,7 +71,7 @@ export function ProfileEditor({ initial }: { initial: EditableProfile }) {
           <Field label="About" htmlFor="pe-bio" hint={`${form.bio.length}/1500 — what you build, how long you have been doing it, what clients can expect.`}>
             <Textarea id="pe-bio" rows={5} value={form.bio} maxLength={1500} aria-describedby="pe-bio-help" onChange={(e) => set('bio', e.target.value)} />
           </Field>
-          <ChipSelect legend="Professions" hint={`Up to ${MAX_PROFESSIONS}.`} options={PROFESSIONS.map((p) => ({ value: p.slug, label: p.label }))} selected={form.professions} onChange={(v) => set('professions', v)} max={MAX_PROFESSIONS} />
+          <ProfessionPicker legend="Professions" value={form.professions} onChange={(v) => set('professions', v)} idPrefix="pe-prof" />
           {availableSpecs.length > 0 && (
             <ChipSelect legend="Specializations" hint={`Up to ${MAX_SPECIALIZATIONS}. Clients can filter the directory by these.`} options={availableSpecs.map((s) => ({ value: s, label: s }))} selected={form.specializations.filter((s) => availableSpecs.includes(s))} onChange={(v) => set('specializations', v)} max={MAX_SPECIALIZATIONS} />
           )}
@@ -128,7 +129,7 @@ export function ProfileEditor({ initial }: { initial: EditableProfile }) {
               <span className="block text-muted-foreground">Turn off to hide your page and remove it from the directory.</span>
             </span>
           </label>
-          <div className="sticky bottom-0 -mx-5 -mb-5 flex justify-end gap-2 border-t bg-background px-5 py-3">
+          <div className="sticky -bottom-5 -mx-5 -mb-5 flex justify-end gap-2 border-t bg-background px-5 py-3">
             <Button variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>

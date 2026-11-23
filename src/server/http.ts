@@ -88,7 +88,10 @@ export function route<A extends Access, P = Record<string, string>>(
     } catch (error) {
       if (error instanceof ApiError)
         return json({ error: error.message, code: error.code, details: error.details }, { status: error.status });
-      console.error('[api] unhandled error', request.method, new URL(request.url).pathname, error);
+      const where = `${request.method} ${new URL(request.url).pathname}`;
+      console.error('[api] unhandled error', where, error);
+      const { reportProblem } = await import('./alerts');
+      await reportProblem('api_error', `${where}: ${String(error).slice(0, 300)}`);
       return json({ error: 'Something went wrong. Please try again.' }, { status: 500 });
     }
   };

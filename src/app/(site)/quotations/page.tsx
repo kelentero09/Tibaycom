@@ -1,8 +1,9 @@
 import type { Metadata } from 'next';
 import Link from 'next/link';
-import { FileText, Lock, Plus } from 'lucide-react';
+import { FileText, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Alert, EmptyState, PageHeader } from '@/components/ui/misc';
+import { EmptyState, PageHeader } from '@/components/ui/misc';
+import { UpgradeBanner } from '@/components/upgrade-prompt';
 import { formatPHP } from '@/lib/money';
 import { listQuotations } from '@/server/quotations';
 import { requireQuotationUser } from './shared';
@@ -15,7 +16,8 @@ export default async function QuotationsPage() {
   const { user } = await requireQuotationUser('/quotations');
   const { rows, used, entitlements, lockedCount } = await listQuotations(user.id);
   const limit = entitlements.limits.quotationsPerMonth;
-  const remaining = Math.max(0, limit - used);
+  const unlimited = limit === null;
+  const remaining = unlimited ? Number.POSITIVE_INFINITY : Math.max(0, limit - used);
 
   const newButton =
     remaining > 0 ? (
@@ -32,19 +34,29 @@ export default async function QuotationsPage() {
 
   return (
     <div className="container-page grid gap-6 py-8">
-      <PageHeader title="Quotations" description={`${used} of ${limit} used this month · ${entitlements.plan === 'premium' ? 'Premium' : 'Free plan'}`} actions={newButton} />
-      <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Monthly quotation usage" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
-        <div className={`h-full rounded-full ${remaining === 0 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${limit ? Math.min(100, (used / limit) * 100) : 100}%` }} />
-      </div>
-      {remaining === 0 && <Alert variant="warning">You have used all {limit} quotations for this month. Your quota resets on the 1st, or upgrade for more.</Alert>}
+      <PageHeader title="Quotations" description={`${unlimited ? `${used} created this month · Unlimited` : `${used} of ${limit} used this month`} · ${entitlements.plan === 'premium' ? 'Premium' : 'Free plan'}`} actions={newButton} />
+      {!unlimited && (
+        <div className="h-2 overflow-hidden rounded-full bg-muted" role="progressbar" aria-label="Monthly quotation usage" aria-valuemin={0} aria-valuemax={limit} aria-valuenow={Math.min(used, limit)}>
+          <div className={`h-full rounded-full transition-[width] duration-500 ${remaining === 0 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${limit ? Math.min(100, (used / limit) * 100) : 100}%` }} />
+        </div>
+      )}
+      {remaining === 0 ? (
+        <UpgradeBanner
+          title={`You’ve used all ${limit} quotations this month.`}
+          body={entitlements.plan === 'free' ? 'Don’t keep a client waiting until the 1st — Premium gives you unlimited quotations.' : 'Your quota resets on the 1st of next month.'}
+          cta={entitlements.plan === 'free' ? 'Get unlimited quotations' : 'View plan'}
+        />
+      ) : entitlements.plan === 'free' && remaining === 1 ? (
+        <UpgradeBanner tone="neutral" title="1 quotation left this month." body="Premium gives you unlimited quotations, with your logo on each one." />
+      ) : null}
 
       {rows.length === 0 ? (
         <EmptyState icon={<FileText />} title="No quotations yet" description="Create a professional quotation with automatic totals and download it as a PDF." action={remaining > 0 ? newButton : undefined} />
       ) : (
         <ul className="grid gap-3">
-          {rows.map((q) => (
-            <li key={q.id}>
-              <Link href={`/quotations/${q.id}`} className="flex items-center justify-between gap-4 rounded-lg border p-4 hover:border-foreground/30">
+          {rows.map((q, index) => (
+            <li key={q.id} className="stagger" style={{ '--i': index } as React.CSSProperties}>
+              <Link href={`/quotations/${q.id}`} className="card-interactive flex items-center justify-between gap-4 rounded-xl border bg-background p-4">
                 <div className="grid min-w-0 gap-0.5">
                   <p className="truncate font-medium">{q.clientName}</p>
                   <p className="truncate text-sm text-muted-foreground">
@@ -60,20 +72,12 @@ export default async function QuotationsPage() {
       )}
 
       {lockedCount > 0 && (
-        <div className="flex flex-col items-start gap-3 rounded-lg border border-dashed p-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="flex items-start gap-2.5 text-sm text-muted-foreground">
-            <Lock className="mt-0.5 size-4 shrink-0" aria-hidden />
-            <span>
-              <span className="font-medium text-foreground">
-                {lockedCount} older quotation{lockedCount === 1 ? '' : 's'} saved.
-              </span>{' '}
-              Quotation history is a Premium feature — upgrade to open, edit and duplicate past quotations.
-            </span>
-          </p>
-          <Button asChild variant="outline" size="sm">
-            <Link href="/account/subscription">Unlock history</Link>
-          </Button>
-        </div>
+        <UpgradeBanner
+          tone="neutral"
+          title={`${lockedCount} older quotation${lockedCount === 1 ? ' is' : 's are'} saved and waiting.`}
+          body="Premium unlocks your full history — reopen, edit and reuse any past quotation instead of typing it again."
+          cta="Unlock history"
+        />
       )}
     </div>
   );

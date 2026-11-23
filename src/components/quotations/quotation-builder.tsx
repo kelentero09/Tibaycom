@@ -4,7 +4,7 @@ import { useRouter } from 'next/navigation';
 import { useMemo, useState } from 'react';
 import { Plus, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api, errorMessage } from '@/lib/api-client';
+import { api, errorMessage, isUpgradeError } from '@/lib/api-client';
 import { centavosToInput, formatPHP, parsePesos } from '@/lib/money';
 import { calculateQuotation, ITEM_TYPE_LABELS, quotationInputSchema, type QuotationInput, type QuotationItem } from '@/lib/quotation';
 import { Button } from '../ui/button';
@@ -28,7 +28,7 @@ export function QuotationBuilder({ mode, id, initial, today }: Props) {
     clientContact: initial?.clientContact ?? '',
     issueDate: initial?.issueDate ?? today,
     validUntil: initial?.validUntil ?? addDays(today, 30),
-    paymentTerms: initial?.paymentTerms ?? '50% down payment, 40% progress billing, 10% upon completion.',
+    paymentTerms: initial?.paymentTerms ?? '',
     notes: initial?.notes ?? '',
   });
   const [rows, setRows] = useState<Row[]>(
@@ -72,12 +72,12 @@ export function QuotationBuilder({ mode, id, initial, today }: Props) {
     setSaving(true);
     setError(null);
     try {
-      const result = mode === 'create' ? await api<{ id: string }>('/api/quotations', { method: 'POST', body: parsed.data }) : (await api(`/api/quotations/${id}`, { method: 'PATCH', body: parsed.data }), { id: id! });
+      const result = mode === 'create' ? await api<{ id: string }>('/api/quotations', { method: 'POST', body: parsed.data, upgradeReason: 'quotations' }) : (await api(`/api/quotations/${id}`, { method: 'PATCH', body: parsed.data, upgradeReason: 'history' }), { id: id! });
       toast.success(mode === 'create' ? 'Quotation created' : 'Quotation saved');
       router.push(`/quotations/${result.id}`);
       router.refresh();
     } catch (err) {
-      setError(errorMessage(err));
+      if (!isUpgradeError(err)) setError(errorMessage(err));
       setSaving(false);
     }
   }
@@ -172,7 +172,7 @@ export function QuotationBuilder({ mode, id, initial, today }: Props) {
           </CardHeader>
           <CardContent className="grid gap-4">
             <Field label="Payment terms" htmlFor="q-terms">
-              <Textarea id="q-terms" rows={3} value={fields.paymentTerms} maxLength={1000} onChange={(e) => setField('paymentTerms', e.target.value)} />
+              <Textarea id="q-terms" rows={3} value={fields.paymentTerms} maxLength={1000} placeholder="e.g. 50% down payment, 40% progress billing, 10% upon completion." onChange={(e) => setField('paymentTerms', e.target.value)} />
             </Field>
             <Field label="Notes" htmlFor="q-notes" hint="Inclusions, exclusions, warranty, schedule…">
               <Textarea id="q-notes" rows={3} value={fields.notes} maxLength={2000} aria-describedby="q-notes-help" onChange={(e) => setField('notes', e.target.value)} />

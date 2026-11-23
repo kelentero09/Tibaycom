@@ -2,15 +2,15 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { CreditCard, FileText, LogOut, Settings, Shield, UserRound } from 'lucide-react';
+import { CreditCard, FileText, Inbox, LogOut, Settings, Shield, UserRound } from 'lucide-react';
 import { toast } from 'sonner';
 import { authClient } from '@/lib/auth-client';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from './ui/dropdown';
 
-type Props = { name: string; email: string; username: string | null; isAdmin: boolean };
+type Props = { name: string; email: string; username: string | null; isAdmin: boolean; newInquiries: number };
 
 /** The only "account navigation" in the product — there is deliberately no separate customer dashboard. */
-export function UserMenu({ name, email, username, isAdmin }: Props) {
+export function UserMenu({ name, email, username, isAdmin, newInquiries }: Props) {
   const router = useRouter();
   const signOut = async () => {
     const { error } = await authClient.signOut();
@@ -22,8 +22,12 @@ export function UserMenu({ name, email, username, isAdmin }: Props) {
 
   return (
     <DropdownMenu>
-      <DropdownMenuTrigger className="flex size-10 items-center justify-center rounded-full bg-muted text-sm font-semibold" aria-label="Account menu">
+      <DropdownMenuTrigger
+        className="relative flex size-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground hover:opacity-90 active:scale-95"
+        aria-label={newInquiries > 0 ? `Account menu, ${newInquiries} new request${newInquiries === 1 ? '' : 's'}` : 'Account menu'}
+      >
         {initial}
+        {newInquiries > 0 && <span className="absolute -right-0.5 -top-0.5 size-3 rounded-full border-2 border-background bg-accent" aria-hidden />}
       </DropdownMenuTrigger>
       <DropdownMenuContent>
         <DropdownMenuLabel className="max-w-56 truncate">{email}</DropdownMenuLabel>
@@ -32,6 +36,14 @@ export function UserMenu({ name, email, username, isAdmin }: Props) {
             <UserRound aria-hidden /> {username ? 'My profile' : 'Create my profile'}
           </Link>
         </DropdownMenuItem>
+        {username && (
+          <DropdownMenuItem asChild>
+            <Link href="/inbox">
+              <Inbox aria-hidden /> Requests
+              {newInquiries > 0 && <span className="ml-auto rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium leading-none text-accent-foreground">{newInquiries}</span>}
+            </Link>
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem asChild>
           <Link href="/quotations">
             <FileText aria-hidden /> Quotations

@@ -23,7 +23,7 @@ export function Badge({ className, variant, ...props }: React.ComponentProps<'sp
 }
 
 export function Skeleton({ className, ...props }: React.ComponentProps<'div'>) {
-  return <div aria-hidden className={cn('animate-pulse rounded-md bg-muted', className)} {...props} />;
+  return <div aria-hidden className={cn('skeleton-shimmer rounded-md', className)} {...props} />;
 }
 
 type StateProps = { icon?: React.ReactNode; title: string; description?: string; action?: React.ReactNode; className?: string };
@@ -31,7 +31,7 @@ type StateProps = { icon?: React.ReactNode; title: string; description?: string;
 /** Shared empty / error state block. */
 export function EmptyState({ icon, title, description, action, className }: StateProps) {
   return (
-    <div className={cn('flex flex-col items-center gap-3 rounded-lg border border-dashed px-6 py-12 text-center', className)}>
+    <div className={cn('flex animate-fade-in flex-col items-center gap-3 rounded-xl border border-dashed bg-subtle/50 px-6 py-12 text-center', className)}>
       {icon && <div className="flex size-11 items-center justify-center rounded-full bg-muted text-muted-foreground [&_svg]:size-5">{icon}</div>}
       <div className="grid gap-1">
         <p className="font-medium">{title}</p>
@@ -51,7 +51,7 @@ const alertStyles: Record<AlertVariant, string> = {
 };
 
 export function Alert({ variant = 'neutral', className, ...props }: React.ComponentProps<'div'> & { variant?: AlertVariant }) {
-  return <div role={variant === 'destructive' ? 'alert' : 'status'} className={cn('rounded-md border px-4 py-3 text-sm', alertStyles[variant], className)} {...props} />;
+  return <div role={variant === 'destructive' ? 'alert' : 'status'} className={cn('animate-fade-in rounded-lg border px-4 py-3 text-sm leading-relaxed', alertStyles[variant], className)} {...props} />;
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {

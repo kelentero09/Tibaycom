@@ -1,6 +1,7 @@
 import './globals.css';
 import type { Metadata, Viewport } from 'next';
 import { Toaster } from 'sonner';
+import { getLocale } from '@/server/locale';
 
 // Every page reads request-scoped Cloudflare bindings, so nothing is prerendered at build time.
 export const dynamic = 'force-dynamic';
@@ -17,12 +18,13 @@ export const metadata: Metadata = {
 
 export const viewport: Viewport = { themeColor: '#0f172a', width: 'device-width', initialScale: 1 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default async function RootLayout({ children }: { children: React.ReactNode }) {
+  const locale = await getLocale();
   return (
-    <html lang="en-PH">
+    <html lang={locale === 'fil' ? 'fil-PH' : 'en-PH'}>
       <body className="flex min-h-dvh flex-col">
         {children}
-        <Toaster position="top-center" richColors closeButton />
+        <Toaster position="top-center" richColors closeButton toastOptions={{ className: 'shadow-lift' }} />
       </body>
     </html>
   );

@@ -2,6 +2,7 @@ import 'server-only';
 import { and, eq, sql } from 'drizzle-orm';
 import { formatPHP } from '@/lib/money';
 import type { BillingInterval } from '@/lib/plans';
+import { reportProblem } from './alerts';
 import { audit } from './audit';
 import { getDb, getEnv, newId, schema } from './db';
 import { sendEmail } from './email';
@@ -51,7 +52,7 @@ export async function startCheckout(user: { id: string; email: string; name: str
       checkoutUrl = session.attributes.checkout_url;
     } catch (error) {
       await db.update(payments).set({ status: 'failed', failureReason: 'checkout_create_failed', updatedAt: new Date() }).where(eq(payments.id, id));
-      console.error('[billing] could not create checkout session', error);
+      await reportProblem('payment_checkout', `PayMongo refused to create a checkout session: ${String(error).slice(0, 300)}`);
       throw new ApiError(502, 'We could not start the payment. Please try again in a moment.');
     }
   }
@@ -87,6 +88,7 @@ export async function applyPaidCheckout(session: PaymongoCheckoutSession, source
     paid.attributes.amount !== row.amount ? 'amount_mismatch' : paid.attributes.currency?.toUpperCase() !== 'PHP' ? 'currency_mismatch' : session.attributes.livemode !== row.livemode ? 'livemode_mismatch' : null;
   if (mismatch) {
     await audit({ actorType: 'system', action: 'payment.rejected', targetType: 'payment', targetId: row.id, metadata: { reason: mismatch, expected: row.amount, received: paid.attributes.amount, source } });
+    await reportProblem('payment_rejected', `Payment ${row.id} was rejected (${mismatch}): expected ${row.amount} centavos, PayMongo reported ${paid.attributes.amount}.`);
     return 'rejected';
   }
 
@@ -179,7 +181,10 @@ export async function recordFailedPayment(payment: PaymongoPayment) {
   if (!paymentId) return;
   const reason = payment.attributes.last_payment_error?.message?.slice(0, 200) ?? 'payment_failed';
   const updated = await getDb().update(payments).set({ status: 'failed', failureReason: reason, updatedAt: new Date() }).where(and(eq(payments.id, paymentId), eq(payments.status, 'pending'))).returning({ id: payments.id, userId: payments.userId });
-  if (updated[0]) await audit({ actorId: updated[0].userId, actorType: 'system', action: 'payment.failed', targetType: 'payment', targetId: paymentId, metadata: { reason } });
+  if (updated[0]) {
+    await audit({ actorId: updated[0].userId, actorType: 'system', action: 'payment.failed', targetType: 'payment', targetId: paymentId, metadata: { reason } });
+    await reportProblem('payment_failed', `Payment ${paymentId} failed at PayMongo: ${reason}`);
+  }
 }
 
 /** `payment.refunded` — record the refund; a full refund of the current period removes Premium immediately. */

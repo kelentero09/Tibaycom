@@ -44,9 +44,9 @@ beforeEach(() => {
 describe('checkout creation', () => {
   it('uses the server-side price and ignores any amount sent by the client', async () => {
     const checkout = await startCheckout('annual', { amount: 100, price: 1, priceAmount: 1 });
-    expect(checkout.amount).toBe(149_000);
+    expect(checkout.amount).toBe(399_000);
     const sent = outbound.checkoutRequests.at(-1)!;
-    expect((sent.body.data.attributes.line_items as { amount: number }[])[0]!.amount).toBe(149_000);
+    expect((sent.body.data.attributes.line_items as { amount: number }[])[0]!.amount).toBe(399_000);
     expect(sent.idempotencyKey).toBe(checkout.paymentId);
     expect(sent.body.data.attributes.reference_number).toBe(checkout.paymentId);
     expect(checkout.checkoutUrl).toContain('checkout.paymongo.test');
@@ -138,12 +138,12 @@ describe('successful payment', () => {
     expect((await webhook(paidEvent('evt_ok_1', sessionId))).status).toBe(200);
 
     const sub = await subscription(user);
-    expect(sub).toMatchObject({ status: 'active', interval: 'monthly', price_amount: 14_900 });
+    expect(sub).toMatchObject({ status: 'active', interval: 'monthly', price_amount: 39_900 });
     const days = (sub!.current_period_end - before) / DAY;
     expect(days).toBeGreaterThan(27.9);
     expect(days).toBeLessThan(31.1);
 
-    expect(await one('SELECT status, fee, net_amount, provider_payment_id, payment_method FROM payments WHERE id = ?', paymentId)).toEqual({ status: 'paid', fee: 373, net_amount: 14_527, provider_payment_id: `pay_${sessionId}`, payment_method: 'gcash' });
+    expect(await one('SELECT status, fee, net_amount, provider_payment_id, payment_method FROM payments WHERE id = ?', paymentId)).toEqual({ status: 'paid', fee: 373, net_amount: 39_527, provider_payment_id: `pay_${sessionId}`, payment_method: 'gcash' });
     expect(await count("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'payment.paid' AND target_id = ?", paymentId)).toBe(1);
     expect(outbound.emails.map((e) => e.subject)).toEqual(['Your Tibay Premium is active']);
     expect(await plan(user)).toBe('premium');
@@ -157,7 +157,7 @@ describe('successful payment', () => {
     const days = (sub!.current_period_end - Date.now()) / DAY;
     expect(days).toBeGreaterThan(364);
     expect(days).toBeLessThan(367);
-    expect(sub!.price_amount).toBe(149_000);
+    expect(sub!.price_amount).toBe(399_000);
   });
 });
 
@@ -215,7 +215,7 @@ describe('payment integrity checks', () => {
   });
 
   it('ignores paid events for sessions this application never created', async () => {
-    outbound.sessions.set('cs_foreign', { id: 'cs_foreign', amount: 14_900, paid: true });
+    outbound.sessions.set('cs_foreign', { id: 'cs_foreign', amount: 39_900, paid: true });
     expect((await webhook(paidEvent('evt_foreign', 'cs_foreign'))).status).toBe(200);
     expect(await count("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'payment.unknown_session'")).toBe(1);
   });
@@ -303,7 +303,7 @@ describe('renewal, expiry and downgrade', () => {
 describe('failed payments and refunds', () => {
   it('records a failed attempt without granting anything, and still accepts a later success', async () => {
     const { user, paymentId, sessionId } = await startCheckout();
-    const failed = { id: 'pay_failed_1', attributes: { amount: 14_900, currency: 'PHP', status: 'failed', metadata: { payment_id: paymentId }, last_payment_error: { message: 'Insufficient funds' } } };
+    const failed = { id: 'pay_failed_1', attributes: { amount: 39_900, currency: 'PHP', status: 'failed', metadata: { payment_id: paymentId }, last_payment_error: { message: 'Insufficient funds' } } };
     expect((await webhook(webhookRequest({ id: 'evt_failed', type: 'payment.failed', resource: failed }))).status).toBe(200);
     expect(await one('SELECT status, failure_reason FROM payments WHERE id = ?', paymentId)).toEqual({ status: 'failed', failure_reason: 'Insufficient funds' });
     expect(await plan(user)).toBe('free');
@@ -319,11 +319,11 @@ describe('failed payments and refunds', () => {
     await webhook(paidEvent('evt_to_refund', sessionId));
     expect(await plan(user)).toBe('premium');
 
-    const refunded = { id: `pay_${sessionId}`, attributes: { amount: 14_900, currency: 'PHP', status: 'refunded', refunds: [{ attributes: { amount: 14_900, status: 'succeeded' } }] } };
+    const refunded = { id: `pay_${sessionId}`, attributes: { amount: 39_900, currency: 'PHP', status: 'refunded', refunds: [{ attributes: { amount: 39_900, status: 'succeeded' } }] } };
     await webhook(webhookRequest({ id: 'evt_refund', type: 'payment.refunded', resource: refunded }));
     await webhook(webhookRequest({ id: 'evt_refund_again', type: 'payment.refunded', resource: refunded }));
 
-    expect(await one('SELECT status, refunded_amount FROM payments WHERE id = ?', paymentId)).toEqual({ status: 'refunded', refunded_amount: 14_900 });
+    expect(await one('SELECT status, refunded_amount FROM payments WHERE id = ?', paymentId)).toEqual({ status: 'refunded', refunded_amount: 39_900 });
     expect((await subscription(user))?.status).toBe('revoked');
     expect(await plan(user)).toBe('free');
     expect(await count("SELECT COUNT(*) AS n FROM audit_logs WHERE action = 'payment.refunded' AND target_id = ?", paymentId)).toBe(1);

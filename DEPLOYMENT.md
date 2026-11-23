@@ -48,7 +48,26 @@ pnpm exec wrangler secret put TURNSTILE_SECRET_KEY
 pnpm exec wrangler secret put RESEND_API_KEY
 pnpm exec wrangler secret put PAYMONGO_SECRET_KEY       # sk_test_… first; sk_live_… only at go-live
 pnpm exec wrangler secret put PAYMONGO_WEBHOOK_SECRET   # from step 6
+# Optional integrations
+pnpm exec wrangler secret put GOOGLE_CLIENT_ID          # enables "Continue with Google"
+pnpm exec wrangler secret put GOOGLE_CLIENT_SECRET
+pnpm exec wrangler secret put ALERT_WEBHOOK_URL         # Slack / Discord / Google Chat incoming webhook for failure alerts
 ```
+
+### Google sign-in
+
+In Google Cloud Console → APIs & Services → Credentials → your OAuth 2.0 Client (type *Web application*):
+
+- **Authorised JavaScript origins:** `http://localhost:3000` and `https://your-domain.ph`
+- **Authorised redirect URIs:** `http://localhost:3000/api/auth/callback/google` and `https://your-domain.ph/api/auth/callback/google`
+
+The redirect URI must be the full callback path — the site root alone is rejected by Google with `redirect_uri_mismatch`. On the OAuth consent screen, add the scopes `email` and `profile` and publish the app (or add test users while it is in testing). Never commit the downloaded `client_secret_….json`; it is git-ignored and can be deleted once the two values are stored as secrets. Facebook works the same way with `FACEBOOK_CLIENT_ID` / `FACEBOOK_CLIENT_SECRET` and the callback `/api/auth/callback/facebook`.
+
+Administrator accounts cannot be linked to Google or Facebook and must sign in with password + two-factor.
+
+### Failure alerts
+
+Tibay notifies you when emails fail, checkout cannot start, payments fail or are rejected, webhooks are invalid or error, the daily job fails, or an unexpected server error occurs — at most once per hour per problem. Alerts go to `ALERT_EMAIL` (a `vars` entry; defaults to `SUPPORT_EMAIL`) and, if set, to `ALERT_WEBHOOK_URL`. Configure the webhook: it is the only channel that still works when email itself is down. Use *Send test alert* on `/admin/system` after deploying.
 
 `APP_ENV=production` matters: it turns on secure cookies, disables the payment simulator and makes missing email configuration an error instead of a console log.
 
@@ -101,7 +120,7 @@ With `sk_test_…` keys deployed:
 3. `/admin/audit` must show `payment.paid` and **no** `webhook.signature_invalid`. If signature failures appear, the header format differs from the assumption documented in `SECURITY.md`: compare a captured `Paymongo-Signature` header with `verifyWebhookSignature()` in `src/server/paymongo.ts` and adjust before going further.
 4. Check which `payment_method_types` your PayMongo account has enabled; remove any that are not from `createCheckoutSession()` in `src/server/paymongo.ts` (a disabled method makes checkout creation fail).
 5. Refund the test payment from the PayMongo dashboard and confirm Premium is revoked and the refund appears in the admin overview.
-6. `/admin/system` should show every check as OK, including a recent *Daily maintenance* run after the first night.
+6. `/admin/system` should show every check as OK, including a recent *Daily maintenance* run after the first night, and *Problems and alerts* should read "All clear".
 
 ## 8. Go live **(approval)**
 
@@ -117,14 +136,14 @@ Figures below are Cloudflare's published free allowances at the time of writing 
 |---|---|---|
 | Workers requests | 100,000 / day | Every page view, API call and `/img` request (static JS/CSS are free) |
 | Workers CPU time | 10 ms / request | See the note below |
-| Worker size | 3 MiB gzipped | Currently 2.28 MiB |
+| Worker size | 3 MiB gzipped | Currently 2.34 MiB |
 | D1 | 5 GB, 5 M rows read / day, 100 k rows written / day | All data, sessions, rate limits |
 | R2 | 10 GB, 1 M writes and 10 M reads / month | Images (≈ 200–350 KB each after compression) |
 | Resend | 100 emails / day | Verification, resets, inquiries, reminders |
 
 **CPU-time note (the one likely reason to pay):** password hashing (scrypt) is deliberately expensive and can exceed the free plan's 10 ms CPU limit on sign-up, sign-in and password change. Cloudflare may terminate such requests on the free plan under load. If sign-ins fail with "exceeded CPU" errors in the Worker logs, move to **Workers Paid (US$5 / month)**, which raises the limit to 30 s and the bundle limit to 10 MiB. Do not weaken the hash to fit the free plan.
 
-Rough capacity on free tiers: storage for about 300 Premium-size portfolios (10 GB ÷ ~30 MB), and several thousand page views a day. The first limit most sites hit is the 100,000 requests/day; putting `/img` behind an R2 custom domain with Cloudflare caching is the natural next optimisation.
+Rough capacity on free tiers: a full Premium portfolio is up to 500 photos (50 projects × 10), roughly 150 MB, so 10 GB holds about 65 completely full Premium accounts — in practice far more, since few fill every slot. A Free account tops out near 1.5 MB. Several thousand page views a day fit in the request allowance. The first limit most sites hit is the 100,000 requests/day; putting `/img` behind an R2 custom domain with Cloudflare caching is the natural next optimisation.
 
 `/admin/system` shows database size and tracked photo storage against these limits.
 

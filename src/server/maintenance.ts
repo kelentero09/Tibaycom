@@ -1,11 +1,13 @@
 import 'server-only';
 import { eq, inArray, lt, sql } from 'drizzle-orm';
+import { reportProblem } from './alerts';
 import { audit } from './audit';
 import { runSubscriptionMaintenance } from './billing';
 import { getDb, getEnv, schema } from './db';
 
 const CURSOR_KEY = 'r2_cleanup_cursor';
 const ORPHAN_GRACE_MS = 24 * 3600_000;
+export const INQUIRY_RETENTION_DAYS = 180;
 const chunk = <T>(list: T[], size: number) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
 
 /**
@@ -52,6 +54,7 @@ async function pruneExpiredRows(now = Date.now()) {
     db.delete(schema.webhookEvents).where(lt(schema.webhookEvents.receivedAt, new Date(now - 60 * 86_400_000))),
     db.delete(schema.verification).where(lt(schema.verification.expiresAt, new Date(now - 86_400_000))),
     db.delete(schema.session).where(lt(schema.session.expiresAt, new Date(now))),
+    db.delete(schema.inquiries).where(lt(schema.inquiries.createdAt, new Date(now - INQUIRY_RETENTION_DAYS * 86_400_000))),
   ]);
 }
 
@@ -65,7 +68,7 @@ export async function runDailyMaintenance() {
     try {
       result[name] = (await task()) ?? 'ok';
     } catch (error) {
-      console.error(`[maintenance] ${name} failed`, error);
+      await reportProblem('maintenance', `Daily job "${name}" failed: ${String(error).slice(0, 300)}`);
       result[name] = 'error';
     }
   }

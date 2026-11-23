@@ -4,6 +4,8 @@ import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { MailCheck } from 'lucide-react';
 import { authClient, captchaHeaders } from '@/lib/auth-client';
+import type { Dictionary } from '@/lib/i18n';
+import { SocialButtons } from './social-buttons';
 import { Turnstile, type TurnstileHandle } from './turnstile';
 import { Button } from './ui/button';
 import { Field, Input } from './ui/form';
@@ -33,7 +35,10 @@ function CheckEmail({ email, children }: { email: string; children: React.ReactN
   );
 }
 
-export function LoginForm({ siteKey, next }: { siteKey: string; next?: string }) {
+type AuthLabels = Dictionary['auth'];
+type Social = { google: boolean; facebook: boolean };
+
+export function LoginForm({ siteKey, next, labels, social, socialError }: { siteKey: string; next?: string; labels: AuthLabels; social: Social; socialError?: boolean }) {
   const [captchaToken, setCaptchaToken, captchaWidget, resetCaptcha] = useCaptcha();
   const [step, setStep] = useState<'credentials' | 'totp' | 'verify-email'>('credentials');
   const [email, setEmail] = useState('');
@@ -95,30 +100,32 @@ export function LoginForm({ siteKey, next }: { siteKey: string; next?: string })
 
   return (
     <form onSubmit={submitCredentials} className="grid gap-4" noValidate>
+      <SocialButtons providers={social} labels={labels} next={next && /^\/(?!\/|\\)/.test(next) ? next : undefined} />
+      {socialError && !error && <Alert variant="destructive">We could not sign you in with that account. Please try again or use your email.</Alert>}
       {error && <Alert variant="destructive">{error}</Alert>}
-      <Field label="Email" htmlFor="email">
+      <Field label={labels.email} htmlFor="email">
         <Input id="email" name="email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
       </Field>
-      <Field label="Password" htmlFor="password">
+      <Field label={labels.password} htmlFor="password">
         <Input id="password" name="password" type="password" required autoComplete="current-password" />
       </Field>
       <Turnstile siteKey={siteKey} onToken={setCaptchaToken} ref={captchaWidget} />
       <Button type="submit" loading={loading}>
-        Log in
+        {labels.login}
       </Button>
       <div className="flex justify-between text-sm">
         <Link href="/forgot-password" className="text-muted-foreground underline-offset-4 hover:underline">
-          Forgot password?
+          {labels.forgot}
         </Link>
         <Link href="/register" className="font-medium text-accent underline-offset-4 hover:underline">
-          Create an account
+          {labels.createAccount}
         </Link>
       </div>
     </form>
   );
 }
 
-export function RegisterForm({ siteKey }: { siteKey: string }) {
+export function RegisterForm({ siteKey, labels, social }: { siteKey: string; labels: AuthLabels; social: Social }) {
   const [captchaToken, setCaptchaToken, captchaWidget, resetCaptcha] = useCaptcha();
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -150,14 +157,15 @@ export function RegisterForm({ siteKey }: { siteKey: string }) {
 
   return (
     <form onSubmit={submit} className="grid gap-4" noValidate>
+      <SocialButtons providers={social} labels={labels} />
       {error && <Alert variant="destructive">{error}</Alert>}
-      <Field label="Full name" htmlFor="name">
+      <Field label={labels.name} htmlFor="name">
         <Input id="name" name="name" required autoComplete="name" maxLength={80} />
       </Field>
-      <Field label="Email" htmlFor="email">
+      <Field label={labels.email} htmlFor="email">
         <Input id="email" name="email" type="email" required autoComplete="email" />
       </Field>
-      <Field label="Password" htmlFor="password" hint="At least 10 characters.">
+      <Field label={labels.password} htmlFor="password" hint={labels.passwordHint}>
         <Input id="password" name="password" type="password" required minLength={10} maxLength={128} autoComplete="new-password" aria-describedby="password-help" />
       </Field>
       <label className="flex items-start gap-2.5 text-sm text-muted-foreground">
@@ -176,12 +184,13 @@ export function RegisterForm({ siteKey }: { siteKey: string }) {
       </label>
       <Turnstile siteKey={siteKey} onToken={setCaptchaToken} ref={captchaWidget} />
       <Button type="submit" loading={loading}>
-        Create free account
+        {labels.register}
       </Button>
+      {(social.google || social.facebook) && <p className="text-center text-xs text-muted-foreground">By continuing with Google or Facebook you also agree to the Terms of Service and Privacy Policy.</p>}
       <p className="text-center text-sm text-muted-foreground">
-        Already have an account?{' '}
+        {labels.haveAccount}{' '}
         <Link href="/login" className="font-medium text-accent underline-offset-4 hover:underline">
-          Log in
+          {labels.login}
         </Link>
       </p>
     </form>

@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { api, errorMessage } from '@/lib/api-client';
-import { MAX_PROFESSIONS, PROFESSIONS } from '@/lib/professions';
-import { ChipSelect, LocationFields } from './location-fields';
+import { LocationFields } from './location-fields';
+import { ProfessionPicker } from './profession-picker';
 import { Button } from './ui/button';
 import { Field, Input } from './ui/form';
 import { Alert } from './ui/misc';
@@ -68,14 +68,7 @@ export function OnboardingForm({ defaultName, siteHost }: { defaultName: string;
           }}
         />
       </Field>
-      <ChipSelect
-        legend="What do you do?"
-        hint={`Choose up to ${MAX_PROFESSIONS}. You can change this later.`}
-        options={PROFESSIONS.map((p) => ({ value: p.slug, label: p.label }))}
-        selected={professions}
-        onChange={setProfessions}
-        max={MAX_PROFESSIONS}
-      />
+      <ProfessionPicker legend="What do you do?" value={professions} onChange={setProfessions} idPrefix="ob-prof" />
       <div className="grid gap-4 sm:grid-cols-2">
         <LocationFields province={location.province} city={location.city} onChange={setLocation} />
       </div>

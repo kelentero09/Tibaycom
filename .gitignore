@@ -40,3 +40,6 @@ coverage/
 
 # TypeScript incremental cache
 *.tsbuildinfo
+
+# Downloaded OAuth credential files — never commit
+client_secret*.json

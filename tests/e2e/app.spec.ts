@@ -20,8 +20,8 @@ test.describe('public site', () => {
   test('landing page explains the product and links to sign-up', async ({ page }) => {
     await page.goto('/');
     await expect(page.getByRole('heading', { level: 1 })).toContainText('Filipino builders');
-    await expect(page.getByRole('link', { name: /Create your free profile/ })).toHaveAttribute('href', '/register');
-    await expect(page.getByText('₱149')).toBeVisible();
+    await expect(page.getByRole('link', { name: /Create your free profile/ }).first()).toHaveAttribute('href', '/register');
+    await expect(page.getByText('₱399').first()).toBeVisible();
   });
 
   test('pages have exactly one h1, a title, a lang attribute and no horizontal overflow', async ({ page }) => {
@@ -61,9 +61,21 @@ test.describe('public site', () => {
     await expect(page.getByText('Made with')).toHaveCount(0); // Premium removes it
   });
 
+  test('switches the interface to Filipino and back', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: /Switch language to Filipino/ }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Pilipinong builder');
+    await expect(page.locator('html')).toHaveAttribute('lang', 'fil-PH');
+    await expect(page.getByRole('link', { name: 'Gumawa ng libreng profile' }).first()).toBeVisible();
+    await page.getByRole('button', { name: /Switch language to English/ }).click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText('Filipino builders');
+  });
+
   test('SEO endpoints respond', async ({ request }) => {
     const robots = await request.get('/robots.txt');
-    expect(await robots.text()).toContain('Disallow: /admin');
+    const rules = await robots.text();
+    expect(rules).toContain('Disallow: /admin');
+    expect(rules).toContain('Disallow: /q/');
     const sitemap = await request.get('/sitemap.xml');
     expect(await sitemap.text()).toContain('/p/jdc-builders');
     expect((await request.get('/p/this-profile-does-not-exist')).status()).toBe(404);
@@ -128,6 +140,66 @@ test.describe('professional workflow', () => {
     const download = page.waitForEvent('download');
     await page.getByRole('button', { name: 'Download PDF' }).click();
     expect((await download).suggestedFilename()).toMatch(/^Q-\d{6}-\d{3}-E2E-Client\.pdf$/);
+  });
+
+  test('a client request reaches the inbox, and a quotation can be shared by link', async ({ page, browser, baseURL }) => {
+    // 1) A visitor (no account) sends a request from the public profile.
+    const visitor = await browser.newContext();
+    const visit = await visitor.newPage();
+    await visit.goto('/p/santos-architects');
+    await visit.getByRole('button', { name: /Request a quotation/ }).first().click();
+    await visit.getByLabel('Your name').fill('E2E Visitor');
+    await visit.getByLabel('Mobile number or email').fill('0917 000 1234');
+    await visit.getByLabel('Project details').fill('Please quote a two-storey house design in Pasig.');
+    await expect(visit.locator('[role="dialog"] [name="cf-turnstile-response"]')).toHaveValue(/.+/, { timeout: 45_000 });
+    await visit.getByRole('button', { name: 'Send request' }).click();
+    await expect(visit.getByText(/Your request was sent/)).toBeVisible();
+
+    // 2) The professional finds it in their inbox, marked new.
+    await login(page, PREMIUM);
+    await page.goto('/inbox');
+    await expect(page.getByText('E2E Visitor')).toBeVisible();
+    await expect(page.getByText('New', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Mark as read' }).click();
+    await expect(page.getByText('New', { exact: true })).toHaveCount(0);
+
+    // 3) They create a quotation and share it by link.
+    const created = await page.request.post('/api/quotations', {
+      headers: { origin: baseURL! },
+      data: { clientName: 'E2E Visitor', issueDate: '2026-11-23', validUntil: '2026-12-23', items: [{ type: 'service', description: 'Architectural design', quantity: 1, unit: 'lot', unitPrice: 8_500_000 }] },
+    });
+    const { id } = (await created.json()) as { id: string };
+    await page.goto(`/quotations/${id}`);
+    await page.getByRole('button', { name: 'Share by link' }).click();
+    await page.getByRole('button', { name: 'Create link' }).click();
+    const link = await page.getByRole('link', { name: 'See what they see' }).getAttribute('href');
+    expect(link).toMatch(/\/q\/[A-Za-z0-9_-]{43}$/);
+
+    // 4) The client opens it without an account: read-only, with PDF download, and not indexable.
+    await visit.goto(link!);
+    await expect(visit.getByText('Quotation from')).toBeVisible();
+    await expect(visit.getByText('₱85,000.00').last()).toBeVisible();
+    await expect(visit.getByRole('button', { name: 'Download PDF' })).toBeVisible();
+    await expect(visit.getByRole('link', { name: 'Edit' })).toHaveCount(0);
+    await expect(visit.locator('meta[name="robots"]')).toHaveAttribute('content', /noindex/);
+
+    // 5) Turning the link off kills it immediately.
+    await page.getByRole('button', { name: 'Turn off link' }).click();
+    await expect(page.getByRole('button', { name: 'Create link' })).toBeVisible();
+    expect((await visit.goto(link!))?.status()).toBe(404);
+    await visitor.close();
+  });
+
+  test('hitting a plan limit opens an upgrade prompt instead of an error', async ({ page, baseURL }) => {
+    await login(page, FREE);
+    // The seeded Free account has 1 of 2 projects; add the second through the API.
+    await page.request.post('/api/projects', { headers: { origin: baseURL! }, data: { title: 'Second project', description: '', location: '', year: 2026 } });
+    await page.goto('/p/jdc-builders');
+    await expect(page.getByText(/You’ve used all 2 project slots/)).toBeVisible();
+    await page.getByRole('button', { name: 'Add project' }).click();
+    const dialog = page.getByRole('dialog');
+    await expect(dialog.getByText('You’ve filled every project slot')).toBeVisible();
+    await expect(dialog.getByRole('link', { name: /Upgrade to Premium/ })).toHaveAttribute('href', '/account/subscription');
   });
 
   test('upgrade flow activates Premium only after the (simulated) gateway confirms payment', async ({ page }) => {

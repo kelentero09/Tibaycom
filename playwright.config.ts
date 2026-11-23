@@ -1,11 +1,12 @@
 import { defineConfig, devices } from '@playwright/test';
 
 const PORT = 8787;
+// `pnpm e2e:serve` runs the built Worker on an isolated database and secrets file (see scripts/e2e-prepare.mjs).
 
 /**
  * E2E runs against the BUILT Worker in the local Workers runtime (the same bundle that gets deployed),
  * using the local D1 database and the payment simulator.
- * Prepare first:  pnpm build:worker && pnpm db:migrate:local && pnpm db:seed
+ * Prepare first:  pnpm build:worker && pnpm e2e:prepare
  */
 export default defineConfig({
   testDir: 'tests/e2e',
@@ -22,5 +23,5 @@ export default defineConfig({
     // The signed-in flows change data (e.g. the upgrade), so the phone profile repeats the read-only public checks.
     { name: 'mobile', use: { ...devices['Pixel 7'] }, grep: /public site/ },
   ],
-  webServer: { command: `pnpm exec wrangler dev --port ${PORT} --var PUBLIC_SITE_URL:http://localhost:${PORT}`, url: `http://localhost:${PORT}`, reuseExistingServer: !process.env.CI, timeout: 180_000 },
+  webServer: { command: 'pnpm e2e:serve', url: `http://localhost:${PORT}`, reuseExistingServer: !process.env.CI, timeout: 180_000 },
 });

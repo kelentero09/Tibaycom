@@ -4,9 +4,10 @@ import { useRouter } from 'next/navigation';
 import { useRef, useState } from 'react';
 import { Camera, Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-import { api, errorMessage } from '@/lib/api-client';
+import { api, errorMessage, isUpgradeError } from '@/lib/api-client';
 import { compressImage } from '@/lib/image-compress';
 import { cn } from '@/lib/utils';
+import { promptUpgrade } from '../upgrade-prompt';
 
 type Props = { kind: 'avatar' | 'logo' | 'cover'; label: string; className?: string; maxDimension?: number; locked?: boolean };
 
@@ -23,11 +24,11 @@ export function ImageUpload({ kind, label, className, maxDimension, locked }: Pr
     setBusy(true);
     try {
       const blob = await compressImage(file, maxDimension);
-      await api(`/api/profile/image?kind=${kind}`, { method: 'PUT', raw: blob });
+      await api(`/api/profile/image?kind=${kind}`, { method: 'PUT', raw: blob, upgradeReason: 'cover' });
       toast.success(`${label} updated`);
       router.refresh();
     } catch (err) {
-      toast.error(errorMessage(err));
+      if (!isUpgradeError(err)) toast.error(errorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -39,7 +40,7 @@ export function ImageUpload({ kind, label, className, maxDimension, locked }: Pr
       <button
         type="button"
         disabled={busy}
-        onClick={() => (locked ? toast.info('Custom cover photos are a Premium feature.', { action: { label: 'Upgrade', onClick: () => window.location.assign('/pricing') } }) : input.current?.click())}
+        onClick={() => (locked ? promptUpgrade('cover') : input.current?.click())}
         className={cn('inline-flex items-center gap-1.5 rounded-full border bg-background/95 px-3 py-2 text-xs font-medium shadow-sm hover:bg-muted', className)}
         aria-label={`Change ${label.toLowerCase()}`}
       >

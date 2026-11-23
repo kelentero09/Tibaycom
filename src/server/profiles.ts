@@ -64,7 +64,7 @@ export type FullProfile = {
 
 /**
  * Loads a profile for display. Visitors only ever receive what the owner's *current* plan allows
- * (oldest projects first, capped photos, no cover on Free) — a lapsed Premium loses the extras without data loss.
+ * (oldest projects first, photos capped per project, no cover on Free) — a lapsed Premium loses the extras without data loss.
  */
 export async function getFullProfile(username: string, viewerId: string | null, viewerIsAdmin = false): Promise<(FullProfile & { isOwner: boolean }) | null> {
   const profile = await getDb().select().from(profiles).where(eq(profiles.username, username.toLowerCase())).get();
@@ -75,12 +75,8 @@ export async function getFullProfile(username: string, viewerId: string | null, 
   const [tags, entitlements, allProjects] = await Promise.all([loadTags([profile.id]), getEntitlements(profile.userId), getProjects(profile.id)]);
   let visible = allProjects;
   if (!isOwner) {
-    let photoBudget = entitlements.limits.photos;
-    visible = allProjects.slice(0, entitlements.limits.projects).map((p) => {
-      const photos = p.photos.slice(0, photoBudget);
-      photoBudget -= photos.length;
-      return { ...p, photos };
-    });
+    const perProject = entitlements.limits.photosPerProject;
+    visible = allProjects.slice(0, entitlements.limits.projects).map((p) => ({ ...p, photos: p.photos.slice(0, perProject) }));
   }
   return {
     profile: !isOwner && !entitlements.limits.customCoverPhoto ? { ...profile, coverKey: null } : profile,
@@ -105,7 +101,9 @@ export async function searchDirectory(query: DirectoryQuery): Promise<{ results:
   if (query.province && query.city) conditions.push(eq(profiles.city, query.city));
   if (query.q) {
     const pattern = `%${query.q.replace(/[\\%_]/g, '\\$&')}%`;
-    conditions.push(sql`${profiles.businessName} LIKE ${pattern} ESCAPE '\\'`);
+    conditions.push(
+      sql`(${profiles.businessName} LIKE ${pattern} ESCAPE '\\' OR EXISTS (SELECT 1 FROM profile_professions pp WHERE pp.profile_id = ${profiles.id} AND pp.profession LIKE ${pattern} ESCAPE '\\'))`,
+    );
   }
   if (query.profession)
     conditions.push(
@@ -150,4 +148,15 @@ export function tagStatements(profileId: string, professions: string[], speciali
     ...(professions.length ? [db.insert(profileProfessions).values(professions.map((profession) => ({ profileId, profession })))] : []),
     ...(specializations.length ? [db.insert(profileSpecializations).values(specializations.map((specialization) => ({ profileId, specialization })))] : []),
   ] as const;
+}
+
+export type InquiryRow = typeof schema.inquiries.$inferSelect;
+
+export async function countNewInquiries(profileId: string) {
+  return getDb().$count(schema.inquiries, and(eq(schema.inquiries.profileId, profileId), eq(schema.inquiries.status, 'new')));
+}
+
+export async function listInquiries(profileId: string, archived: boolean): Promise<InquiryRow[]> {
+  const status = archived ? eq(schema.inquiries.status, 'archived') : sql`${schema.inquiries.status} != 'archived'`;
+  return getDb().select().from(schema.inquiries).where(and(eq(schema.inquiries.profileId, profileId), status)).orderBy(desc(schema.inquiries.createdAt)).limit(100);
 }

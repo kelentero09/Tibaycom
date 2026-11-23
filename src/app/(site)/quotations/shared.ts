@@ -1,11 +1,11 @@
 import 'server-only';
 import { redirect } from 'next/navigation';
-import type { QuotationBranding } from '@/lib/quotation-pdf';
+import type { QuotationBranding, QuotationDocument } from '@/lib/quotation-pdf';
 import { requireUser } from '@/server/auth';
 import type { Entitlements } from '@/server/entitlements';
 import { ApiError } from '@/server/http';
 import { getProfileByUserId, type ProfileRow } from '@/server/profiles';
-import { getQuotation } from '@/server/quotations';
+import { getQuotation, type QuotationRow } from '@/server/quotations';
 import { imageUrl } from '@/server/storage';
 
 /** Quotation pages need a signed-in user with a profile (it supplies the business header). */
@@ -40,3 +40,22 @@ export async function loadQuotationOr404(userId: string, id: string) {
 }
 
 export const todayInManila = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Manila' }).format(new Date());
+
+/** The plain document shape shared by the on-screen view, the PDF and the client link. */
+export function toDocument(row: QuotationRow): QuotationDocument {
+  return {
+    number: row.number,
+    title: row.title,
+    clientName: row.clientName,
+    clientAddress: row.clientAddress,
+    clientContact: row.clientContact,
+    issueDate: row.issueDate,
+    validUntil: row.validUntil,
+    items: row.items,
+    discountType: row.discountType,
+    discountValue: row.discountValue,
+    taxRateBps: row.taxRateBps,
+    paymentTerms: row.paymentTerms,
+    notes: row.notes,
+  };
+}

@@ -71,12 +71,22 @@ describe('input validation', () => {
     expect(usernameSchema.parse('  Juan-Builders  ')).toBe('juan-builders');
     for (const bad of ['ab', 'admin', 'api', '-juan', 'juan-', 'ju--an', 'juan dela cruz', 'juan/../x', '<script>', 'a'.repeat(31)]) expect(usernameSchema.safeParse(bad).success).toBe(false);
   });
+  it('accepts listed professions and sensible typed ones, and rejects markup or junk', () => {
+    const base = { username: 'juan-builders', businessName: 'Juan Builders', province: 'Cebu', city: 'Argao' };
+    const ok = onboardingSchema.safeParse({ ...base, professions: ['mason', 'carpenter', 'Scaffolder', 'Drywall & Ceiling Installer', 'scaffolder'] });
+    expect(ok.success && ok.data.professions).toEqual(['mason', 'carpenter', 'scaffolder', 'Drywall & Ceiling Installer']); // case-insensitive de-duplication
+    for (const bad of ['<script>alert(1)</script>', 'x', 'a'.repeat(41), '   ', 'Robert"); DROP TABLE user;--', 'line\nbreak'])
+      expect(onboardingSchema.safeParse({ ...base, professions: [bad] }).success, bad).toBe(false);
+    expect(onboardingSchema.safeParse({ ...base, professions: ['mason', 'carpenter', 'painter', 'welder', 'roofer', 'plumber', 'electrician'] }).success).toBe(false); // more than 6
+    expect(onboardingSchema.safeParse({ ...base, professions: [] }).success).toBe(false);
+  });
+
   it('requires the city to belong to the province', () => {
     const base = { username: 'juan-builders', businessName: 'Juan Builders', professions: ['mason'] };
     expect(onboardingSchema.safeParse({ ...base, province: 'Cebu', city: 'Argao' }).success).toBe(true);
     expect(onboardingSchema.safeParse({ ...base, province: 'Cebu', city: 'Quezon City' }).success).toBe(false);
     expect(onboardingSchema.safeParse({ ...base, province: 'Atlantis', city: 'Argao' }).success).toBe(false);
-    expect(onboardingSchema.safeParse({ ...base, province: 'Cebu', city: 'Argao', professions: ['hacker'] }).success).toBe(false);
+    expect(onboardingSchema.safeParse({ ...base, province: 'Cebu', city: 'Argao', professions: ['<b>hacker</b>'] }).success).toBe(false);
   });
 
   const profile = { businessName: 'Juan Builders', bio: '', professions: ['mason'], specializations: ['Plastering', 'Solar PV'], services: [], yearsExperience: 5, province: 'Cebu', city: 'Argao', serviceAreas: [], phone: '', contactEmail: '', facebookUrl: '', messengerUrl: '', isPublished: true };
@@ -116,11 +126,12 @@ describe('entitlements', () => {
   });
   it('ships the published plan table as defaults', () => {
     const { pricing, limits } = DEFAULT_PLAN_CONFIG;
-    expect(pricing).toEqual({ monthly: 14_900, annual: 149_000 });
-    expect(limits.free).toMatchObject({ projects: 3, photos: 10, quotationsPerMonth: 3, customQuotationBranding: false, quotationHistory: false, customCoverPhoto: false, removePlatformBranding: false });
-    expect(limits.premium).toMatchObject({ projects: 20, photos: 100, quotationsPerMonth: 50, customQuotationBranding: true, quotationHistory: true, customCoverPhoto: true, removePlatformBranding: true });
+    expect(pricing).toEqual({ monthly: 39_900, annual: 399_000 });
+    expect(pricing.monthly * 12 - pricing.annual).toBe(79_800); // "save ₱798" on the annual plan
+    expect(limits.free).toMatchObject({ projects: 2, photosPerProject: 2, quotationsPerMonth: 2, customQuotationBranding: false, quotationHistory: false, customCoverPhoto: false, removePlatformBranding: false });
+    expect(limits.premium).toMatchObject({ projects: 50, photosPerProject: 10, quotationsPerMonth: null, customQuotationBranding: true, quotationHistory: true, customCoverPhoto: true, removePlatformBranding: true });
     expect(planConfigSchema.safeParse(DEFAULT_PLAN_CONFIG).success).toBe(true);
-    expect(planConfigSchema.safeParse({ ...DEFAULT_PLAN_CONFIG, pricing: { monthly: 0, annual: 149_000 } }).success).toBe(false);
+    expect(planConfigSchema.safeParse({ ...DEFAULT_PLAN_CONFIG, pricing: { monthly: 0, annual: 399_000 } }).success).toBe(false);
   });
 });
 

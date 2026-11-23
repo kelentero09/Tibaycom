@@ -12,10 +12,9 @@ import { ConfirmDialog } from '../ui/dialog';
 import { Field, Input } from '../ui/form';
 import { Alert } from '../ui/misc';
 
-const numericLimits: { key: 'projects' | 'photos' | 'quotationsPerMonth'; label: string }[] = [
+const numericLimits: { key: 'projects' | 'photosPerProject'; label: string }[] = [
   { key: 'projects', label: 'Projects' },
-  { key: 'photos', label: 'Total photos' },
-  { key: 'quotationsPerMonth', label: 'Quotations / month' },
+  { key: 'photosPerProject', label: 'Photos per project' },
 ];
 const featureFlags: { key: 'customQuotationBranding' | 'quotationHistory' | 'customCoverPhoto' | 'removePlatformBranding'; label: string }[] = [
   { key: 'customQuotationBranding', label: 'Custom quotation branding' },
@@ -93,8 +92,15 @@ export function PlanSettingsForm({ initial }: { initial: PlanConfig }) {
                     <Input id={`ps-${plan}-${key}`} type="number" min={0} value={limits[plan][key]} onChange={(e) => setLimit(plan, key, Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
                   </Field>
                 ))}
+                <Field label="Quotations / month" htmlFor={`ps-${plan}-quotes`}>
+                  <Input id={`ps-${plan}-quotes`} type="number" min={0} disabled={limits[plan].quotationsPerMonth === null} value={limits[plan].quotationsPerMonth ?? ''} placeholder="Unlimited" onChange={(e) => setLimit(plan, 'quotationsPerMonth', Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
+                </Field>
               </div>
               <div className="grid gap-2">
+                <label className="flex items-center gap-2.5 text-sm">
+                  <input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={limits[plan].quotationsPerMonth === null} onChange={(e) => setLimit(plan, 'quotationsPerMonth', e.target.checked ? null : 50)} />
+                  Unlimited quotations
+                </label>
                 {featureFlags.map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2.5 text-sm">
                     <input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={limits[plan][key]} onChange={(e) => setLimit(plan, key, e.target.checked)} />

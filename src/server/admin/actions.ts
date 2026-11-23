@@ -23,6 +23,7 @@ export const adminActionSchemas = {
   'subscription.grant': z.object({ userId: id, days: z.number().int().min(1).max(366) }),
   'subscription.revoke': z.object({ userId: id }),
   'settings.plans': planConfigSchema,
+  'alert.test': z.object({}),
 } as const;
 
 export type AdminAction = keyof typeof adminActionSchemas;
@@ -99,6 +100,12 @@ const handlers: Handlers = {
       .returning({ id: schema.subscriptions.id });
     if (!updated.length) throw new ApiError(404, 'No active subscription for this user.');
     return { targetType: 'user', targetId: userId };
+  },
+  'alert.test': async (_input, { admin }) => {
+    const { reportProblem } = await import('../alerts');
+    await getDb().run(sql`UPDATE alerts SET last_notified_at = NULL WHERE kind = 'test'`); // a test always sends
+    await reportProblem('test', `Test alert requested by ${admin.email}. If you can read this, alerting works.`);
+    return { targetType: 'alert', targetId: 'test' };
   },
   'settings.plans': async (config, { admin }) => {
     await getDb()

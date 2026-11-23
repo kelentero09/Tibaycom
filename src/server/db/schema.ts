@@ -245,6 +245,8 @@ export const quotations = sqliteTable(
     taxRateBps: integer('tax_rate_bps').notNull().default(0),
     paymentTerms: text('payment_terms').notNull().default(''),
     notes: text('notes').notNull().default(''),
+    /** Unguessable token for the read-only client link (/q/<token>). NULL = not shared. */
+    shareToken: text('share_token').unique(),
     /** Server-computed totals in centavos. */
     subtotal: integer('subtotal').notNull(),
     discountAmount: integer('discount_amount').notNull(),
@@ -358,6 +360,38 @@ export const reports = sqliteTable(
   },
   (t) => [index('reports_status_idx').on(t.status, t.createdAt)],
 );
+
+/** Quotation requests sent by visitors from a public profile. Kept so a lead survives a lost email; purged after 180 days. */
+export const inquiries = sqliteTable(
+  'inquiries',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    name: text('name').notNull(),
+    contact: text('contact').notNull(),
+    message: text('message').notNull(),
+    status: text('status', { enum: ['new', 'read', 'archived'] })
+      .notNull()
+      .default('new'),
+    emailSent: bool('email_sent').notNull().default(false),
+    createdAt: ts('created_at').notNull().default(now),
+  },
+  (t) => [index('inquiries_profile_idx').on(t.profileId, t.status, t.createdAt)],
+);
+
+/** Operational problems (failed emails, payment errors…). One row per kind; used to throttle notifications. */
+export const alerts = sqliteTable('alerts', {
+  kind: text('kind').primaryKey(),
+  lastMessage: text('last_message').notNull(),
+  count: integer('count').notNull().default(1),
+  /** Occurrences since the last notification was sent. */
+  pendingCount: integer('pending_count').notNull().default(1),
+  firstSeenAt: ts('first_seen_at').notNull().default(now),
+  lastSeenAt: ts('last_seen_at').notNull().default(now),
+  lastNotifiedAt: ts('last_notified_at'),
+});
 
 export const auditLogs = sqliteTable(
   'audit_logs',

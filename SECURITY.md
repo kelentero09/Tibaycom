@@ -15,6 +15,12 @@ Email the address configured as `SUPPORT_EMAIL` with details and reproduction st
 - **Brute-force protection**: Better Auth rate limits stored in D1 — sign-in 8 / 5 min, sign-up 6 / hour, password reset 4 / hour, 2FA 8 / 5 min per IP — plus Turnstile on sign-up, sign-in and password-reset requests. 2FA verification additionally locks after repeated failures.
 - The forgot-password response is identical whether or not the account exists. Post-login redirects accept same-site relative paths only.
 
+### Social sign-in
+- Google / Facebook through Better Auth (authorization-code flow with state and PKCE handled by the library). Enabled only when credentials are configured.
+- Account linking is limited to these trusted providers and requires the provider's verified email to match.
+- **Administrators can never use social sign-in**: a database hook blocks linking a social account to an admin, and `scripts/make-admin.mjs` deletes linked social accounts on promotion. Otherwise a Google login would bypass the mandatory TOTP step.
+- Users without a password cannot be asked for one: account deletion for them requires a recent sign-in instead.
+
 ## Authorisation (`src/server/http.ts`)
 
 - **Every** API route is wrapped in `route({ access })`: `public`, `user` or `admin`. There is no client-side-only protection anywhere.
@@ -43,8 +49,19 @@ Email the address configured as `SUPPORT_EMAIL` with details and reproduction st
 
 > **Assumption to confirm in PayMongo test mode before going live:** the signature format above follows PayMongo's published scheme, but the page documenting it could not be retrieved while building. `DEPLOYMENT.md` includes a step to verify one real test webhook end to end.
 
+## Shared quotation links
+- The link token is 32 bytes from the platform CSPRNG (base64url). Lookups require the exact format and use a bound parameter and a unique index.
+- The page is `noindex, nofollow`, sets `referrer: no-referrer` so the token is not leaked to sites the client clicks through to, and is listed in `robots.txt`.
+- Only the owner (and only on a quotation their plan lets them open) can create or revoke a link; revoking nulls the token and re-enabling issues a new one.
+- The link is hidden while the owner's profile is suspended. Anyone holding the link can view that one quotation — the UI tells the owner this before sharing.
+
+## Requests inbox
+- Stored requests contain a visitor's name, contact and message. Only the receiving professional can read, archive or delete them (ownership is in the SQL `WHERE`).
+- Retention is 180 days, enforced by the daily job; the Privacy Policy states this.
+
 ## Input handling
 
+- Typed ("Other") professions are restricted to letters, numbers and basic punctuation (2–40 characters), de-duplicated case-insensitively, and only ever rendered as text.
 - **Validation**: every request body is parsed with Zod (`src/lib/validation.ts`, `src/lib/quotation.ts`), with length limits and a body-size cap.
 - **SQL injection**: all queries use Drizzle with bound parameters. Raw SQL uses the `sql` template tag (parameterised). `LIKE` patterns escape `%`, `_` and `\`.
 - **XSS**: user content is only ever rendered as React text (auto-escaped). No user HTML is accepted or rendered; the single `dangerouslySetInnerHTML` is server-built JSON-LD with `<` escaped. Social links must be `https://` on facebook.com / fb.com / m.me / messenger.com; `javascript:` and look-alike hosts are rejected. Email templates HTML-escape every value.
@@ -86,7 +103,8 @@ Counters are stored in D1 (one atomic upsert), so they hold across Worker isolat
 - Secrets are **never** in the repository: `.dev.vars` (git-ignored) locally, `wrangler secret put` in production. `.env.example` lists every name with no values.
 - `wrangler.jsonc` `vars` holds only non-secret configuration (site URL, sender address, Turnstile **site** key).
 - Server modules import `server-only`, so a secret-bearing module cannot be bundled into client JavaScript.
-- Required secrets: `BETTER_AUTH_SECRET`, `TURNSTILE_SECRET_KEY`, `RESEND_API_KEY`, `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, `CRON_SECRET`.
+- Required secrets: `BETTER_AUTH_SECRET`, `TURNSTILE_SECRET_KEY`, `RESEND_API_KEY`, `PAYMONGO_SECRET_KEY`, `PAYMONGO_WEBHOOK_SECRET`, `CRON_SECRET`. Optional: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `FACEBOOK_CLIENT_ID`, `FACEBOOK_CLIENT_SECRET`, `ALERT_WEBHOOK_URL`.
+- Downloaded OAuth credential files (`client_secret*.json`) are git-ignored.
 
 ## Audit logging
 
@@ -100,7 +118,7 @@ See `DEPLOYMENT.md` → *Backups and recovery* (D1 Time Travel, scheduled SQL ex
 
 Implemented in the product:
 - **Consent and transparency**: explicit consent checkbox at registration linking to the Privacy Policy and Terms; the policy lists what is collected, why, processors and retention.
-- **Data minimisation**: visitor quotation requests are emailed to the professional and **not stored**; the professional's contact email is never displayed; IP addresses are kept only in sessions, rate-limit counters and audit entries.
+- **Data minimisation**: visitor quotation requests are kept only for the receiving professional and deleted after 180 days; the professional's contact email is never displayed; IP addresses are kept only in sessions, rate-limit counters and audit entries.
 - **Data subject rights**: users can view and correct their data from their profile, hide their profile, and **delete their account** (profile, projects, photos, quotations and R2 images are erased; payment rows are retained for accounting with the user link removed).
 - **Security measures**: the controls in this document, including admin 2FA and audit logs.
 
@@ -114,6 +132,7 @@ Operator responsibilities before launch (not solvable in code):
 ## Not implemented (accepted risks / future work)
 
 - Nonce-based CSP (see above).
-- Passkeys / social login.
+- Passkeys.
+- Alert messages can include short error text from providers; they are sent only to the owner's configured email and webhook.
 - Automated malware scanning of uploads (mitigated by strict image-only sniffing and serving headers).
 - A separate append-only store for audit logs outside D1.

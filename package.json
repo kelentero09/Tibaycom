@@ -21,7 +21,9 @@
     "admin:promote": "node scripts/make-admin.mjs",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",
-    "build:worker": "opennextjs-cloudflare build"
+    "build:worker": "opennextjs-cloudflare build",
+    "e2e:prepare": "node scripts/e2e-prepare.mjs",
+    "e2e:serve": "wrangler dev --port 8787 --persist-to .wrangler/e2e-state --env-file .wrangler/e2e.env --var PUBLIC_SITE_URL:http://localhost:8787"
   },
   "dependencies": {
     "@opennextjs/cloudflare": "^1.20.18",

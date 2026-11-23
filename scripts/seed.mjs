@@ -1,5 +1,6 @@
 // DEVELOPMENT-ONLY seed data for the LOCAL D1 database.
-// Usage: pnpm db:seed
+// Usage: pnpm db:seed                              (your local dev database — REPLACES everything in it)
+//        node scripts/seed.mjs --persist-to <dir>  (a separate database folder, used by the e2e tests)
 // It never touches a remote database: the wrangler command below is hard-coded to --local.
 import { execFileSync } from 'node:child_process';
 import { randomBytes, randomUUID, scryptSync } from 'node:crypto';
@@ -80,7 +81,6 @@ const freeProfile = addProfile(free, {
   bio: 'Family-run contractor building and renovating homes in Cebu since 2012. Clear quotations, honest timelines.', years: 13, services: ['House construction', 'Renovation', 'Roofing'], daysAgo: 45,
 });
 addProject(freeProfile, 'Two-storey residence', 'Complete design-and-build of a 180 sqm family home.', 'Talisay, Cebu', 2025, 0);
-addProject(freeProfile, 'Kitchen renovation', 'Full kitchen remodel with modular cabinets and granite counters.', 'Cebu City', 2026, 1);
 
 const premium = addUser({ name: 'Maria Santos', email: 'premium@tibay.test', daysAgo: 90 });
 const premiumProfile = addProfile(premium, {
@@ -88,11 +88,11 @@ const premiumProfile = addProfile(premium, {
   bio: 'Licensed architect designing practical, well-lit homes for Filipino families. Permit-ready plans and 3D walkthroughs.', years: 9, services: ['Architectural plans', '3D perspectives', 'Permit processing'], daysAgo: 90,
 });
 ['Modern tropical house', 'Townhouse row development', 'Café interior fit-out', 'Vacation villa', 'Duplex with roof deck'].forEach((title, i) => addProject(premiumProfile, title, 'Concept to construction documents.', 'Metro Manila', 2022 + (i % 5), i));
-addSubscription(premium, { interval: 'annual', status: 'active', startDaysAgo: 60, endInDays: 305, price: 149_000 });
+addSubscription(premium, { interval: 'annual', status: 'active', startDaysAgo: 60, endInDays: 305, price: 399_000 });
 
 const lapsed = addUser({ name: 'Pedro Reyes', email: 'expired@tibay.test', daysAgo: 100 });
 addProfile(lapsed, { username: 'reyes-electrical', businessName: 'Reyes Electrical Services', professions: ['electrician'], specializations: ['House Wiring', 'Panel Boards'], province: 'Laguna', bio: 'Licensed electrician for residential and small commercial work.', years: 15, daysAgo: 100 });
-addSubscription(lapsed, { interval: 'monthly', status: 'expired', startDaysAgo: 45, endInDays: -15, price: 14_900 });
+addSubscription(lapsed, { interval: 'monthly', status: 'expired', startDaysAgo: 45, endInDays: -15, price: 39_900 });
 
 // --- Directory filler ---
 const samples = [
@@ -114,7 +114,7 @@ samples.forEach(([businessName, profession, province, specializations], index) =
   const userId = addUser({ name: businessName, email: `${username}@tibay.test`, daysAgo: 28 - index * 2 });
   const profileId = addProfile(userId, { username, businessName, professions: [profession], specializations, province, cityIndex: index, bio: `${businessName} — reliable workmanship in ${province}.`, years: 3 + index, daysAgo: 28 - index * 2 });
   addProject(profileId, 'Recent project', 'Completed on time and within budget.', province, 2026, index % 5);
-  if (index % 4 === 0) addSubscription(userId, { interval: 'monthly', status: 'active', startDaysAgo: 10, endInDays: 20, price: 14_900 });
+  if (index % 4 === 0) addSubscription(userId, { interval: 'monthly', status: 'active', startDaysAgo: 10, endInDays: 20, price: 39_900 });
 });
 
 sql.push(insert('reports', { id: randomUUID(), profile_id: 'seedp_lakas_steel_works', reason: 'fake', details: 'Photos look copied from another company.', reporter_email: 'visitor@example.com', status: 'open', created_at: now - DAY }));
@@ -125,5 +125,7 @@ const cleanup = ['audit_logs', 'reports', 'webhook_events', 'payments', 'subscri
 mkdirSync(new URL('../.wrangler/', import.meta.url), { recursive: true });
 const file = new URL('../.wrangler/seed.dev.sql', import.meta.url);
 writeFileSync(file, [...cleanup, ...sql].join('\n'));
-execFileSync('pnpm', ['exec', 'wrangler', 'd1', 'execute', 'tibay', '--local', '--file', '.wrangler/seed.dev.sql'], { stdio: 'inherit', shell: true });
+const persistIndex = process.argv.indexOf('--persist-to');
+const persist = persistIndex > 0 && process.argv[persistIndex + 1] ? ['--persist-to', process.argv[persistIndex + 1]] : [];
+execFileSync('pnpm', ['exec', 'wrangler', 'd1', 'execute', 'tibay', '--local', ...persist, '--file', '.wrangler/seed.dev.sql'], { stdio: 'inherit', shell: true });
 console.log(`\nSeeded ${samples.length + 4} users. Log in with any of:\n  free@tibay.test · premium@tibay.test · expired@tibay.test · admin@tibay.test\n  password: ${DEV_PASSWORD}`);

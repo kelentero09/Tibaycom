@@ -54,22 +54,11 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install --with-deps chromium
-      - name: Local secrets for the test server (non-production, generated per run)
-        run: |
-          {
-            echo "BETTER_AUTH_SECRET=$(openssl rand -base64 32)"
-            echo "TURNSTILE_SECRET_KEY=1x0000000000000000000000000000000AA"
-            echo "RESEND_API_KEY="
-            echo "PAYMONGO_SECRET_KEY="
-            echo "PAYMONGO_WEBHOOK_SECRET=whsk_ci"
-            echo "CRON_SECRET=$(openssl rand -hex 32)"
-            echo "NEXTJS_ENV=development"
-          } > .dev.vars
       - run: pnpm cf-typegen
       - name: Build the Worker bundle under test
         run: pnpm build:worker
-      - run: pnpm db:migrate:local
-      - run: pnpm db:seed
+      - name: Create and seed the e2e database
+        run: pnpm e2e:prepare
       - run: pnpm test:e2e
       - uses: actions/upload-artifact@v4
         if: failure()

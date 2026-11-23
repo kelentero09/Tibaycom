@@ -5,8 +5,10 @@ export type BillingInterval = 'monthly' | 'annual';
 
 const limitsSchema = z.object({
   projects: z.number().int().min(0).max(1000),
-  photos: z.number().int().min(0).max(10000),
-  quotationsPerMonth: z.number().int().min(0).max(100000),
+  /** Maximum photos in ONE project. */
+  photosPerProject: z.number().int().min(0).max(50),
+  /** Quotations that can be created per calendar month. `null` = unlimited. */
+  quotationsPerMonth: z.number().int().min(0).max(100000).nullable(),
   customQuotationBranding: z.boolean(),
   quotationHistory: z.boolean(),
   customCoverPhoto: z.boolean(),
@@ -29,21 +31,22 @@ export type PlanConfig = z.infer<typeof planConfigSchema>;
 
 /** Defaults; a Super Admin can override them in Platform Settings (stored in the `settings` table). */
 export const DEFAULT_PLAN_CONFIG: PlanConfig = {
-  pricing: { monthly: 14_900, annual: 149_000 },
+  // ₱399 / month, ₱3,990 / year (saves ₱798 against twelve monthly payments)
+  pricing: { monthly: 39_900, annual: 399_000 },
   limits: {
     free: {
-      projects: 3,
-      photos: 10,
-      quotationsPerMonth: 3,
+      projects: 2,
+      photosPerProject: 2,
+      quotationsPerMonth: 2,
       customQuotationBranding: false,
       quotationHistory: false,
       customCoverPhoto: false,
       removePlatformBranding: false,
     },
     premium: {
-      projects: 20,
-      photos: 100,
-      quotationsPerMonth: 50,
+      projects: 50,
+      photosPerProject: 10,
+      quotationsPerMonth: null,
       customQuotationBranding: true,
       quotationHistory: true,
       customCoverPhoto: true,
@@ -53,10 +56,12 @@ export const DEFAULT_PLAN_CONFIG: PlanConfig = {
   renewalReminderDays: 5,
 };
 
+/** "Unlimited" or the number, for display. */
+export const formatQuota = (value: number | null) => (value === null ? 'Unlimited' : String(value));
+
 /** Upload constraints shared by client (pre-compression target) and server (hard validation). */
 export const IMAGE_RULES = {
   maxBytes: 1_500_000,
   maxDimension: 1920,
   allowedTypes: ['image/webp', 'image/jpeg', 'image/png'] as const,
-  maxPhotosPerProject: 12,
 };

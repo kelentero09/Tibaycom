@@ -1,7 +1,9 @@
 import { ExternalLink } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge, PageHeader } from '@/components/ui/misc';
+import { TestAlertButton } from '@/components/admin/test-alert-button';
 import { getSystemHealth } from '@/server/admin/queries';
+import { ALERT_LABELS, alertChannels, listAlerts } from '@/server/alerts';
 import { requireAdmin } from '@/server/auth';
 import { getEnv } from '@/server/db';
 import { isLiveKey, isMockMode } from '@/server/paymongo';
@@ -44,7 +46,9 @@ function Meter({ label, used, limit }: { label: string; used: number; limit: num
 export default async function AdminSystemPage() {
   await requireAdmin();
   const env = getEnv();
-  const { dbLatencyMs, counts } = await getSystemHealth();
+  const [{ dbLatencyMs, counts }, problems] = await Promise.all([getSystemHealth(), listAlerts()]);
+  const channels = alertChannels();
+  const recent = problems.filter((p) => p.kind !== 'test' && isRecent(p.lastSeenAt, 24 * 7));
   const n = (key: string) => Number(counts[key] ?? 0);
   const checks = [
     { label: 'Database (D1)', ok: true, detail: `Responded in ${dbLatencyMs} ms` },
@@ -100,6 +104,42 @@ export default async function AdminSystemPage() {
           </CardContent>
         </Card>
       </div>
+      <Card>
+        <CardHeader>
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="grid gap-1">
+              <CardTitle className="flex items-center gap-2">
+                Problems and alerts <Badge variant={recent.length ? 'destructive' : 'success'}>{recent.length ? `${recent.length} in the last 7 days` : 'All clear'}</Badge>
+              </CardTitle>
+              <CardDescription>
+                When emails, payments, webhooks or the daily job fail, you are notified at <span className="font-medium text-foreground">{channels.email}</span>
+                {channels.webhook ? ' and in your chat channel' : ''} — at most once an hour per problem.
+                {!channels.webhook && ' Add ALERT_WEBHOOK_URL (Slack, Discord or Google Chat) to also be alerted if email itself is down.'}
+              </CardDescription>
+            </div>
+            <TestAlertButton />
+          </div>
+        </CardHeader>
+        <CardContent>
+          {problems.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No problems have been recorded.</p>
+          ) : (
+            <ul className="divide-y text-sm">
+              {problems.map((problem) => (
+                <li key={problem.kind} className="grid gap-1 py-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-medium">{ALERT_LABELS[problem.kind] ?? problem.kind}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {problem.count}× · last {when(problem.lastSeenAt)}
+                    </span>
+                  </div>
+                  <p className="break-words text-muted-foreground">{problem.lastMessage}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </CardContent>
+      </Card>
       <Card>
         <CardHeader>
           <CardTitle>Provider dashboards</CardTitle>

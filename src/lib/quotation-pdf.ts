@@ -90,15 +90,22 @@ export async function buildQuotationPdf(quotation: QuotationDocument, branding: 
     body.push([{ content: ITEM_TYPE_LABELS[type].toUpperCase(), colSpan: 5, styles: { fontStyle: 'bold', fillColor: [241, 245, 249], textColor: ink, fontSize: 8 } }]);
     rows.forEach(({ item, total }) => body.push([safe(item.description), String(item.quantity), safe(item.unit), formatPHPAscii(item.unitPrice), formatPHPAscii(total)]));
   });
+  // The totals below reuse these widths so their labels and values line up with the table's last two columns.
+  const PRICE_WIDTH = 34;
+  const AMOUNT_WIDTH = 36;
+  const CELL_PADDING = 2.2;
+  const amountX = right - AMOUNT_WIDTH + CELL_PADDING; // left edge of the text in the "Amount" column
+  const labelX = right - AMOUNT_WIDTH - PRICE_WIDTH + CELL_PADDING; // left edge of the text in the "Unit price" column
   autoTable(doc, {
     startY: y,
     margin: { left: margin, right: margin, bottom: 22 },
     head: [['Description', 'Qty', 'Unit', 'Unit price', 'Amount']],
     body,
     theme: 'plain',
-    styles: { font: 'helvetica', fontSize: 9, cellPadding: 2.2, textColor: ink, lineColor: [226, 232, 240], lineWidth: { bottom: 0.2 } as never },
-    headStyles: { fillColor: ink, textColor: [255, 255, 255], fontStyle: 'bold' },
-    columnStyles: { 1: { halign: 'right', cellWidth: 18 }, 2: { cellWidth: 18 }, 3: { halign: 'right', cellWidth: 32 }, 4: { halign: 'right', cellWidth: 34 } },
+    // Headings and values share the same (left) alignment in every column.
+    styles: { font: 'helvetica', fontSize: 9, cellPadding: CELL_PADDING, textColor: ink, lineColor: [226, 232, 240], lineWidth: { bottom: 0.2 } as never, halign: 'left' },
+    headStyles: { fillColor: ink, textColor: [255, 255, 255], fontStyle: 'bold', halign: 'left' },
+    columnStyles: { 1: { cellWidth: 18 }, 2: { cellWidth: 20 }, 3: { cellWidth: PRICE_WIDTH }, 4: { cellWidth: AMOUNT_WIDTH } },
   });
   y = ((doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable.finalY ?? y) + 6;
 
@@ -113,13 +120,14 @@ export async function buildQuotationPdf(quotation: QuotationDocument, branding: 
     y = margin;
   }
   totalRows.forEach(([label, value, strong]) => {
-    doc.setFont('helvetica', strong ? 'bold' : 'normal').setFontSize(strong ? 12 : 9.5).setTextColor(...(strong ? ink : muted));
+    doc.setFont('helvetica', strong ? 'bold' : 'normal').setFontSize(strong ? 11 : 9).setTextColor(...(strong ? ink : muted));
     if (strong) {
-      doc.setDrawColor(...ink).line(right - 80, y - 1.5, right, y - 1.5);
+      doc.setDrawColor(...ink).line(labelX, y - 1.5, right, y - 1.5);
       y += 4;
     }
-    doc.text(label, right - 80, y);
-    doc.setTextColor(...ink).text(value, right, y, { align: 'right' });
+    doc.text(label, labelX, y);
+    // Left-aligned at the same x as the values in the Amount column directly above.
+    doc.setTextColor(...ink).text(value, amountX, y);
     y += strong ? 8 : 6;
   });
 

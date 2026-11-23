@@ -35,8 +35,10 @@ src/
       pricing, about, contact, privacy, terms
       login, register, forgot-password, reset-password, onboarding
       quotations/           List, new, view, edit
+      inbox/                Requests from clients
       account/              subscription, security
       dev/checkout/[id]/    Local payment simulator (404 unless mock mode)
+    q/[token]/              Read-only shared quotation (no site chrome, noindex)
     admin/                  Super Admin area (own layout, role + 2FA gate)
     api/                    Route handlers (JSON)
     img/[...key]/           Image delivery from R2
@@ -53,6 +55,8 @@ src/
     profiles.ts, quotations.ts, storage.ts
     paymongo.ts, billing.ts PayMongo client, signature verification, payment application
     maintenance.ts          Daily jobs
+    alerts.ts               Owner notifications for operational failures
+    locale.ts               Language cookie → dictionary
     admin/                  metrics.ts, queries.ts, actions.ts
   data/ph-locations.json    Provinces → cities/municipalities (generated from the PSGC)
 tests/                      unit/, integration/, e2e/
@@ -85,14 +89,25 @@ Owners edit from their own profile page (`/p/username`): an owner-only bar opens
 ### Plans and entitlements
 - Prices and limits live in `DEFAULT_PLAN_CONFIG` (`src/lib/plans.ts`) and can be overridden at runtime by a Super Admin (stored as JSON in `settings`, validated by the same Zod schema).
 - **Premium is derived, never stored as a flag**: a user is Premium iff `subscriptions.status = 'active' AND current_period_end > now`. An expired period is Free immediately, even before the daily job marks it `expired`.
-- Limits are enforced in SQL in the same statement as the insert (projects, photos) or as a conditional upsert (monthly quotation counter), so concurrent requests cannot exceed a limit.
+- Limits are enforced in SQL in the same statement as the insert (projects; photos **per project**) or as a conditional upsert (monthly quotation counter), so concurrent requests cannot exceed a limit.
+- **Upgrade prompts**: any API response with HTTP 402 makes the client helper (`src/lib/api-client.ts`) fire a `tibay:upgrade` event; one `UpgradeDialogHost` in the site layout shows the dialog with a reason-specific message. Inline `UpgradeBanner`s appear just before a limit is reached.
 - **Downgrade never deletes**. Over-limit projects/photos and the cover photo are hidden from visitors; quotation history beyond the current month is locked. Everything returns on renewal.
+
+### Sign-in
+Email + password (with verification, optional TOTP) and, when credentials are configured, Google / Facebook through Better Auth's social providers. A social login with an already-registered, verified email signs into the same account. A database hook refuses to link a social login to an administrator, and promoting an account to admin removes any linked social logins, so the admin area always requires password + TOTP.
+
+### Languages
+`src/lib/i18n.ts` holds English and Filipino dictionaries for the acquisition screens (navigation, landing, auth, directory, pricing). The choice is a `lang` cookie read on the server (`src/server/locale.ts`); client components receive their strings as props. No routing or URL changes are involved.
+
+### Requests inbox
+A visitor's quotation request is inserted into `inquiries` first and emailed second, so a failed or spam-filtered email cannot lose it. The owner manages requests at `/inbox`; rows are purged after 180 days.
 
 ### Quotations
 - Stored in D1 with line items as JSON. Totals are recomputed on the server on every save; client totals are ignored.
 - Money is integer centavos; quantities allow three decimals; percentages are basis points. Order of operations: subtotal → discount (capped at subtotal) → tax on the discounted amount.
-- "3 / 50 PDF quotations per month" is enforced on **creating** a quotation (including duplicates), counted per calendar month in Philippine time. Because PDFs are generated in the browser, the saved quotation is the unit the server can control. Deleting does not refund quota.
+- The monthly quotation limit (2 on Free, unlimited on Premium — `null` in the plan config) is enforced on **creating** a quotation (including duplicates), counted per calendar month in Philippine time. Because PDFs are generated in the browser, the saved quotation is the unit the server can control. Deleting does not refund quota.
 - Custom branding: the server only sends the logo URL to Premium accounts, and adds the "Made with Tibay" footer flag for Free accounts.
+- **Sharing**: the owner can create a read-only client link `/q/<token>` (32 random bytes, stored in `quotations.share_token`). The page lives outside the site layout, is `noindex`, sends no referrer, and renders the same `QuotationDocumentView` component as the owner's preview. Turning the link off nulls the token; turning it on again issues a new one. The PDF can also be sent through the device share sheet (Web Share API with a file), falling back to a download.
 
 ### Billing (PayMongo)
 PayMongo's Subscriptions API requires account activation by PayMongo and was not assumed. Tibay sells **prepaid periods** through **Checkout Sessions** (GCash, Maya, cards, GrabPay, QR Ph):
@@ -110,8 +125,14 @@ If automatic recurring billing is enabled on the PayMongo account later, it can 
 ### Images
 The browser resizes (max 1920 px) and re-encodes to WebP (JPEG fallback) before upload, which also strips EXIF/GPS data. The server checks size (≤ 1.5 MB), sniffs magic bytes (JPEG/PNG/WebP only), generates the key itself (`kind/userId/uuid.ext`) and stores it in R2. `/img/[...key]` serves with a one-year immutable cache, `nosniff` and a locked-down CSP.
 
+### Photos
+Order is `project_photos.sort_order`; the first photo is the cover. Reordering replaces the whole order in one batch after checking the submitted ids are exactly the project's photos.
+
+### Failure alerts (`src/server/alerts.ts`)
+`reportProblem(kind, message)` is called where things can fail in production (email send, checkout creation, payment failure / rejection, webhook signature and processing, daily job, unhandled API errors). It upserts one row per kind in `alerts`, then atomically claims the right to notify (at most once an hour per kind) and sends to email and an optional chat webhook. It never throws. `/admin/system` lists recorded problems and can send a test alert.
+
 ### Daily maintenance (cron, 02:15 Manila)
-Mark lapsed subscriptions expired and email the owner · send renewal reminders · close abandoned checkouts · delete orphaned R2 objects (one page per run) · prune expired sessions, verification tokens, rate-limit rows and old webhook ids.
+Mark lapsed subscriptions expired and email the owner · send renewal reminders · close abandoned checkouts · delete orphaned R2 objects (one page per run) · prune expired sessions, verification tokens, rate-limit rows, old webhook ids and requests older than 180 days.
 
 ## Cost profile
 

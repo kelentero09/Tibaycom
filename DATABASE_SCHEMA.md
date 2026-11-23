@@ -27,21 +27,23 @@ Conventions:
 Indexes: `(province, city)`, `(status, is_published, updated_at)` for directory listing.
 
 ### `profile_professions`, `profile_specializations`
-Join tables `(profile_id, profession)` / `(profile_id, specialization)` with composite primary keys and an index on the tag column. They make multi-profession filtering an indexed `EXISTS` instead of scanning JSON.
+Join tables `(profile_id, profession)` / `(profile_id, specialization)` with composite primary keys and an index on the tag column. `profession` is either a slug from the curated list or free text the user typed under "Other". They make multi-profession filtering an indexed `EXISTS` instead of scanning JSON.
 
 ### `projects`
 `profile_id` → profiles, `title`, `description`, `location`, `year`. Index `(profile_id, created_at)`.
 
 ### `project_photos`
-`project_id` → projects, `profile_id` → profiles (denormalised so the per-profile photo quota is one indexed count), `key` (unique R2 key), `size_bytes`, `sort_order`.
+`project_id` → projects, `profile_id` → profiles (denormalised for ownership checks and storage totals), `key` (unique R2 key), `size_bytes`, `sort_order` (display order; the first photo is the project's cover). The plan limit is counted per project.
 
 ## Quotations
 
 ### `quotations`
 `user_id` → user, `number` (`Q-YYYYMM-NNN`), `title`, `client_name`, `client_address`, `client_contact`, `issue_date`, `valid_until` (ISO dates), `items` (JSON array of `{type, description, quantity, unit, unitPrice}`), `discount_type` (`none` \| `percent` \| `fixed`), `discount_value`, `tax_rate_bps`, `payment_terms`, `notes`, and server-computed `subtotal`, `discount_amount`, `tax_amount`, `total`. Index `(user_id, created_at)`.
 
+`share_token` (unique, nullable) holds the token of the read-only client link; `NULL` means the quotation is not shared.
+
 ### `usage_counters`
-Primary key `(user_id, period, kind)`; `period` is `YYYY-MM` in Asia/Manila; `kind` is `quotation`. Incremented with a conditional upsert that only succeeds below the plan limit.
+Primary key `(user_id, period, kind)`; `period` is `YYYY-MM` in Asia/Manila; `kind` is `quotation`. Incremented with a conditional upsert that only succeeds below the plan limit (unconditional when the plan is unlimited — the counter also numbers the quotation).
 
 ## Billing
 
@@ -58,6 +60,8 @@ Primary key `(user_id, period, kind)`; `period` is `YYYY-MM` in Asia/Manila; `ki
 
 | Table | Purpose |
 |---|---|
+| `inquiries` | Quotation requests sent from a public profile: `profile_id`, `name`, `contact`, `message`, `status` (`new` \| `read` \| `archived`), `email_sent`. Index `(profile_id, status, created_at)`. Purged after 180 days. |
+| `alerts` | One row per kind of operational problem: `kind` (PK), `last_message`, `count`, `pending_count`, `first_seen_at`, `last_seen_at`, `last_notified_at` (drives the one-per-hour throttle). |
 | `reports` | Visitor reports against a profile: `reason`, `details`, `reporter_email`, `status` (`open` \| `resolved` \| `dismissed`), `resolved_by`, `resolved_at`. |
 | `audit_logs` | Append-only trail: `actor_id`, `actor_type` (`admin` \| `user` \| `system`), `action` (e.g. `admin.user.ban`, `payment.paid`, `webhook.signature_invalid`), `target_type`, `target_id`, `metadata` (JSON), `ip`. |
 | `settings` | Key/value JSON: `plans` (pricing + limits override), `r2_cleanup_cursor`. |
@@ -68,6 +72,7 @@ Primary key `(user_id, period, kind)`; `period` is `YYYY-MM` in Asia/Manila; `ki
 user 1─1 profiles 1─* projects 1─* project_photos
   │        ├─* profile_professions
   │        ├─* profile_specializations
+  │        ├─* inquiries
   │        └─* reports
   ├─* quotations
   ├─* usage_counters

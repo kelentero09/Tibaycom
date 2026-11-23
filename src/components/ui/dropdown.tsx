@@ -10,7 +10,7 @@ export const DropdownMenuTrigger = Primitive.Trigger;
 export function DropdownMenuContent({ className, ...props }: React.ComponentProps<typeof Primitive.Content>) {
   return (
     <Primitive.Portal>
-      <Primitive.Content align="end" sideOffset={6} className={cn('z-50 min-w-48 rounded-lg border bg-background p-1 shadow-md', className)} {...props} />
+      <Primitive.Content data-menu align="end" sideOffset={6} className={cn('z-50 min-w-52 rounded-xl border bg-background p-1.5 shadow-lift', className)} {...props} />
     </Primitive.Portal>
   );
 }
@@ -19,8 +19,8 @@ export function DropdownMenuItem({ className, destructive, ...props }: React.Com
   return (
     <Primitive.Item
       className={cn(
-        'flex min-h-10 cursor-pointer items-center gap-2 rounded-md px-3 text-sm outline-none data-[highlighted]:bg-muted [&_svg]:size-4',
-        destructive && 'text-destructive',
+        'flex min-h-10 cursor-pointer items-center gap-2.5 rounded-md px-3 text-sm outline-none data-[highlighted]:bg-muted [&_svg]:size-4 [&_svg]:text-muted-foreground',
+        destructive && 'text-destructive [&_svg]:text-destructive',
         className,
       )}
       {...props}
@@ -29,7 +29,7 @@ export function DropdownMenuItem({ className, destructive, ...props }: React.Com
 }
 
 export function DropdownMenuSeparator() {
-  return <Primitive.Separator className="my-1 h-px bg-border" />;
+  return <Primitive.Separator className="my-1.5 h-px bg-border" />;
 }
 
 export function DropdownMenuLabel({ className, ...props }: React.ComponentProps<typeof Primitive.Label>) {

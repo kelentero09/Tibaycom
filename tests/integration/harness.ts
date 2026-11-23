@@ -7,6 +7,7 @@ import { setTestEnv } from '../stubs/cloudflare-context';
 export const SITE = 'http://localhost:3000';
 export const WEBHOOK_SECRET = 'whsk_integration_secret';
 export const CRON_SECRET = 'cron_integration_secret';
+export const ALERT_WEBHOOK = 'https://hooks.tibay.test/alerts';
 
 let platform: PlatformProxy<CloudflareEnv> | undefined;
 export let env: CloudflareEnv;
@@ -26,6 +27,8 @@ export async function setupTestPlatform(overrides: Partial<CloudflareEnv> = {}) 
     PAYMONGO_SECRET_KEY: 'sk_test_integration',
     PAYMONGO_WEBHOOK_SECRET: WEBHOOK_SECRET,
     CRON_SECRET,
+    // Optional integration (not part of the generated env type): chat webhook for owner alerts.
+    ...({ ALERT_WEBHOOK_URL: ALERT_WEBHOOK } as object),
     ...overrides,
   };
   setTestEnv(env);
@@ -52,6 +55,9 @@ export const outbound = {
   sessions: new Map<string, FakeSession>(),
   turnstileOk: true,
   paymongoDown: false,
+  resendDown: false,
+  /** Bodies posted to the alert chat webhook. */
+  webhookCalls: [] as string[],
 };
 
 export function sessionResource(session: FakeSession) {
@@ -75,7 +81,12 @@ export function installFetchMock() {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const json = (data: unknown, status = 200) => new Response(JSON.stringify(data), { status, headers: { 'content-type': 'application/json' } });
     if (url.startsWith('https://challenges.cloudflare.com/turnstile')) return json({ success: outbound.turnstileOk });
+    if (url === ALERT_WEBHOOK) {
+      outbound.webhookCalls.push(String((JSON.parse(String(init?.body)) as { text: string }).text));
+      return json({ ok: true });
+    }
     if (url.startsWith('https://api.resend.com/emails')) {
+      if (outbound.resendDown) return json({ message: 'Service unavailable' }, 503);
       const body = JSON.parse(String(init?.body)) as { to: string[]; subject: string };
       outbound.emails.push({ to: body.to, subject: body.subject });
       return json({ id: 'email_1' });
@@ -124,7 +135,7 @@ export async function setSubscription(userId: string, options: { status?: 'activ
   await env.DB.prepare(
     'INSERT INTO subscriptions (id, user_id, interval, status, price_amount, current_period_start, current_period_end, cancel_at_period_end, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?) ON CONFLICT(user_id) DO UPDATE SET status = excluded.status, current_period_end = excluded.current_period_end',
   )
-    .bind(`sub-${userId}`, userId, options.interval ?? 'monthly', options.status ?? 'active', options.price ?? 14_900, now - 86_400_000, now + options.endsInDays * 86_400_000, now, now)
+    .bind(`sub-${userId}`, userId, options.interval ?? 'monthly', options.status ?? 'active', options.price ?? 39_900, now - 86_400_000, now + options.endsInDays * 86_400_000, now, now)
     .run();
 }
 

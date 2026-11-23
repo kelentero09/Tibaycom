@@ -2,10 +2,11 @@ import type { Metadata } from 'next';
 import { PricingTable } from '@/components/pricing-table';
 import { getSession } from '@/server/auth';
 import { getPlanConfig } from '@/server/entitlements';
+import { getT } from '@/server/locale';
 
 export const metadata: Metadata = {
   title: 'Pricing',
-  description: 'Tibay is free to start. Premium adds more projects, branded PDF quotations and a custom cover photo for ₱149 a month.',
+  description: 'Tibay is free to start. Premium adds more projects, unlimited branded quotations and a custom cover photo.',
   alternates: { canonical: '/pricing' },
 };
 
@@ -17,21 +18,21 @@ const faqs = [
 ];
 
 export default async function PricingPage() {
-  const [config, session] = await Promise.all([getPlanConfig(), getSession()]);
+  const [config, session, t] = await Promise.all([getPlanConfig(), getSession(), getT()]);
   return (
     <div className="container-page grid gap-12 py-10">
       <div className="grid gap-2">
-        <h1 className="text-3xl font-semibold">Pricing</h1>
-        <p className="max-w-xl text-muted-foreground">Start free and stay free as long as you like. Upgrade when you want to show more work and send branded quotations.</p>
+        <h1 className="text-3xl font-semibold sm:text-4xl">{t.pricing.title}</h1>
+        <p className="max-w-xl text-muted-foreground">{t.pricing.subtitle}</p>
       </div>
-      <PricingTable config={config} freeHref={session ? '/onboarding' : '/register'} premiumHref={session ? '/account/subscription' : '/register'} />
+      <PricingTable config={config} freeHref={session ? '/onboarding' : '/register'} premiumHref={session ? '/account/subscription' : '/register'} labels={t.pricing} />
       <section aria-labelledby="faq-heading" className="grid gap-4">
         <h2 id="faq-heading" className="text-xl font-semibold">
           Questions
         </h2>
         <dl className="grid gap-4 sm:grid-cols-2">
           {faqs.map((faq) => (
-            <div key={faq.q} className="rounded-lg border p-5">
+            <div key={faq.q} className="rounded-xl border bg-background p-5 shadow-card">
               <dt className="font-medium">{faq.q}</dt>
               <dd className="mt-1.5 text-sm leading-relaxed text-muted-foreground">{faq.a}</dd>
             </div>

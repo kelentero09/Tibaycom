@@ -15,7 +15,7 @@ export default function PrivacyPage() {
       </p>
       <h2>Information we collect</h2>
       <ul>
-        <li><strong>Account data:</strong> name, email address and a securely hashed password.</li>
+        <li><strong>Account data:</strong> name, email address and a securely hashed password. If you sign in with Google or Facebook, we receive your name, email address and profile picture from that provider instead of a password.</li>
         <li><strong>Profile data you choose to publish:</strong> business name, profession, location, description, services, contact number, social links, photos and projects.</li>
         <li><strong>Quotation data:</strong> the client names, contact details and line items you enter when creating quotations. You are responsible for having a lawful basis to record your clients’ details.</li>
         <li><strong>Payment data:</strong> subscription payments are processed by PayMongo. We receive the payment status, amount and reference numbers. We never receive or store card numbers or e-wallet credentials.</li>
@@ -29,9 +29,11 @@ export default function PrivacyPage() {
       </ul>
       <p>We do not sell personal data and we do not use it for third-party advertising.</p>
       <h2>Messages sent to professionals</h2>
-      <p>When a visitor sends a quotation request through a profile, the name, contact details and message are emailed to that professional only. Tibay does not keep a copy of the message.</p>
+      <p>When a visitor sends a quotation request through a profile, the name, contact details and message are delivered to that professional only — by email and in their private requests inbox on Tibay. Requests are deleted automatically after 180 days, and the professional can delete them sooner.</p>
+      <h2>Shared quotation links</h2>
+      <p>A professional may share a quotation through a private link. Anyone who has the link can view that quotation until the professional turns the link off or deletes the quotation. These pages are not indexed by search engines.</p>
       <h2>Service providers</h2>
-      <p>We share data only with processors that help us run Tibay: Cloudflare (hosting, database, storage and bot protection), PayMongo (payments) and Resend (email delivery). Some of these process data outside the Philippines under appropriate safeguards.</p>
+      <p>We share data only with processors that help us run Tibay: Cloudflare (hosting, database, storage and bot protection), PayMongo (payments), Resend (email delivery) and, if you choose social sign-in, Google or Meta (authentication). Some of these process data outside the Philippines under appropriate safeguards.</p>
       <h2>Retention</h2>
       <p>We keep account and profile data while your account is active. When you delete your account, your profile, projects, photos and quotations are removed. Payment and audit records are retained as required by tax and accounting laws.</p>
       <h2>Your rights</h2>

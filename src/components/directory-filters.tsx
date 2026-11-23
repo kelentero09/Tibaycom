@@ -32,7 +32,7 @@ export function DirectoryFilters({ initial }: { initial: Filters }) {
     <form
       role="search"
       aria-label="Search professionals"
-      className="grid gap-3 rounded-lg border bg-background p-4"
+      className="grid gap-3 rounded-xl border bg-background p-4 shadow-card"
       onSubmit={(e) => {
         e.preventDefault();
         apply(filters);

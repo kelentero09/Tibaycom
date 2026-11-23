@@ -69,13 +69,19 @@ export async function createQuotation(userId: string, input: QuotationInput) {
   const limit = entitlements.limits.quotationsPerMonth;
   const period = currentPeriod();
   const db = getDb();
+  // The counter always advances (it also numbers the quotation); a finite limit adds the "only while below it" guard.
   const reserved =
-    limit > 0
+    limit === null
       ? await db.all<{ count: number }>(sql`
           INSERT INTO usage_counters (user_id, period, kind, count) VALUES (${userId}, ${period}, 'quotation', 1)
-          ON CONFLICT(user_id, period, kind) DO UPDATE SET count = count + 1 WHERE count < ${limit}
+          ON CONFLICT(user_id, period, kind) DO UPDATE SET count = count + 1
           RETURNING count`)
-      : [];
+      : limit > 0
+        ? await db.all<{ count: number }>(sql`
+            INSERT INTO usage_counters (user_id, period, kind, count) VALUES (${userId}, ${period}, 'quotation', 1)
+            ON CONFLICT(user_id, period, kind) DO UPDATE SET count = count + 1 WHERE count < ${limit}
+            RETURNING count`)
+        : [];
   const sequence = reserved[0]?.count;
   if (!sequence)
     throw new ApiError(402, `You have used all ${limit} quotations for this month on the ${entitlements.plan === 'premium' ? 'Premium' : 'Free'} plan.`, 'limit_reached');
@@ -124,4 +130,32 @@ export async function duplicateQuotation(userId: string, id: string) {
 export async function deleteQuotation(userId: string, id: string) {
   const deleted = await getDb().delete(quotations).where(and(eq(quotations.id, id), eq(quotations.userId, userId))).returning({ id: quotations.id });
   if (!deleted.length) throw new ApiError(404, 'Quotation not found.');
+}
+
+const SHARE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+
+/** Enables or disables the public read-only link. Re-enabling always issues a NEW token, so an old link can be revoked for good. */
+export async function setQuotationSharing(userId: string, id: string, enabled: boolean) {
+  await getQuotation(userId, id); // ownership + plan access
+  const token = enabled ? Buffer.from(crypto.getRandomValues(new Uint8Array(32))).toString('base64url') : null;
+  await getDb().update(quotations).set({ shareToken: token, updatedAt: new Date() }).where(and(eq(quotations.id, id), eq(quotations.userId, userId)));
+  return { shareToken: token };
+}
+
+/**
+ * Loads a quotation for the public client link. Returns null for unknown or malformed tokens and when the
+ * owner's profile is not publicly active. The token is the only credential, so it is 256 bits of randomness.
+ */
+export async function getSharedQuotation(token: string) {
+  if (!SHARE_TOKEN_PATTERN.test(token)) return null;
+  const db = getDb();
+  const row = await db.select().from(quotations).where(eq(quotations.shareToken, token)).get();
+  if (!row) return null;
+  const [profile, account, entitlements] = await Promise.all([
+    db.select().from(schema.profiles).where(eq(schema.profiles.userId, row.userId)).get(),
+    db.select({ email: schema.user.email }).from(schema.user).where(eq(schema.user.id, row.userId)).get(),
+    getEntitlements(row.userId),
+  ]);
+  if (!profile || profile.status !== 'active' || !account) return null;
+  return { row, profile, entitlements, accountEmail: account.email };
 }

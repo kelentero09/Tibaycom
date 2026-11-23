@@ -6,14 +6,23 @@ import { betterAuth } from 'better-auth';
 import { drizzleAdapter } from 'better-auth/adapters/drizzle';
 import { admin, captcha, twoFactor } from 'better-auth/plugins';
 import { audit } from './audit';
-import { getDb, getEnv, schema } from './db';
+import { eq } from 'drizzle-orm';
+import { getDb, getEnv, optionalEnv, schema } from './db';
 import { sendEmail } from './email';
 import { hashPassword, verifyPassword } from './password';
 import { deleteUserImages } from './storage';
 
+/** Which social sign-in buttons to show — derived from which credentials are configured. */
+export function socialProviders() {
+  const google = optionalEnv('GOOGLE_CLIENT_ID') && optionalEnv('GOOGLE_CLIENT_SECRET');
+  const facebook = optionalEnv('FACEBOOK_CLIENT_ID') && optionalEnv('FACEBOOK_CLIENT_SECRET');
+  return { google: !!google, facebook: !!facebook };
+}
+
 export const getAuth = () => {
   const env = getEnv();
   const production = env.APP_ENV === 'production';
+  const social = socialProviders();
   return betterAuth({
     appName: 'Tibay',
     baseURL: env.PUBLIC_SITE_URL,
@@ -68,6 +77,26 @@ export const getAuth = () => {
         beforeDelete: async (user) => {
           await deleteUserImages(user.id);
           await audit({ actorId: user.id, actorType: 'user', action: 'account.deleted' });
+        },
+      },
+    },
+    socialProviders: {
+      ...(social.google ? { google: { clientId: optionalEnv('GOOGLE_CLIENT_ID')!, clientSecret: optionalEnv('GOOGLE_CLIENT_SECRET')!, prompt: 'select_account' as const } } : {}),
+      ...(social.facebook ? { facebook: { clientId: optionalEnv('FACEBOOK_CLIENT_ID')!, clientSecret: optionalEnv('FACEBOOK_CLIENT_SECRET')! } } : {}),
+    },
+    account: {
+      // A Google/Facebook login with the same verified email signs into the existing account instead of creating a duplicate.
+      accountLinking: { enabled: true, trustedProviders: ['google', 'facebook'] },
+    },
+    databaseHooks: {
+      account: {
+        create: {
+          before: async (account) => {
+            if (account.providerId === 'credential') return;
+            const owner = await getDb().select({ role: schema.user.role }).from(schema.user).where(eq(schema.user.id, account.userId)).get();
+            // Administrators must sign in with password + two-factor; a social login would bypass the TOTP step.
+            if (owner?.role === 'admin') return false;
+          },
         },
       },
     },

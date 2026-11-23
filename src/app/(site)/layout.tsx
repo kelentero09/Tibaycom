@@ -1,6 +1,9 @@
 import { SiteFooter, SiteHeader } from '@/components/site-shell';
+import { UpgradeDialogHost } from '@/components/upgrade-prompt';
+import { getPlanConfig } from '@/server/entitlements';
 
-export default function SiteLayout({ children }: { children: React.ReactNode }) {
+export default async function SiteLayout({ children }: { children: React.ReactNode }) {
+  const config = await getPlanConfig();
   return (
     <>
       <SiteHeader />
@@ -8,6 +11,7 @@ export default function SiteLayout({ children }: { children: React.ReactNode }) 
         {children}
       </main>
       <SiteFooter />
+      <UpgradeDialogHost monthly={config.pricing.monthly} annual={config.pricing.annual} premium={config.limits.premium} />
     </>
   );
 }

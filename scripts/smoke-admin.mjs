@@ -1,5 +1,7 @@
 // Admin smoke test: real 2FA enrolment (TOTP), then every admin page, an admin action, an export and the audit trail.
 // Usage: node scripts/smoke-admin.mjs [baseUrl]   — needs a freshly seeded local database (`pnpm db:seed`).
+// Start the Worker on the SEPARATE test database first (never your dev data):
+//   pnpm e2e:prepare && pnpm e2e:serve
 import { createHmac } from 'node:crypto';
 
 const BASE = process.argv[2] ?? 'http://localhost:8787';
@@ -65,9 +67,9 @@ for (const path of ['/admin', '/admin?from=2026-01-01&to=2026-11-30', '/admin/us
 }
 const overview = (await http('/admin')).text;
 check('overview shows live metrics', ['Total registered users', 'MRR', 'ARR', 'Net collections in range', 'Churn rate', 'Upcoming renewals', 'Failed payments in range'].every((label) => overview.includes(label)));
-// Seed: 1 annual (₱1,490 → ₱124.17/mo) + 3 monthly (₱149) active subscriptions = MRR ₱571.17, ARR ₱6,854.04
-check('MRR normalises the annual plan (₱571.17)', overview.includes('571.17'), 'expected ₱571.17');
-check('ARR = MRR × 12 (₱6,854.04)', overview.includes('6,854.04'), 'expected ₱6,854.04');
+// Seed: 1 annual (₱3,990 → ₱332.50/mo) + 3 monthly (₱399) active subscriptions = MRR ₱1,529.50, ARR ₱18,354.00
+check('MRR normalises the annual plan (₱1,529.50)', overview.includes('1,529.50'), 'expected ₱1,529.50');
+check('ARR = MRR × 12 (₱18,354.00)', overview.includes('18,354.00'), 'expected ₱18,354.00');
 
 const ban = await http('/api/admin/actions/user.ban', { method: 'POST', body: { userId: 'seed_lakas_steel_works', reason: 'Smoke test' } });
 check('admin can ban a user', ban.status === 200, ban.text);

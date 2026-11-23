@@ -27,8 +27,25 @@ export const PROFESSIONS: Profession[] = [
 
 const bySlug = new Map(PROFESSIONS.map((p) => [p.slug, p]));
 
-export const professionLabel = (slug: string) => bySlug.get(slug)?.label ?? slug;
+/** Listed professions are stored as slugs; anything else is a profession the user typed themselves ("Other"). */
+export const professionLabel = (value: string) => bySlug.get(value)?.label ?? value;
 export const isProfession = (slug: string) => bySlug.has(slug);
+
+/** Letters, numbers and ordinary punctuation only — 2 to 40 characters. Rendered as text, never as HTML. */
+const CUSTOM_PROFESSION = /^[\p{L}\p{N}][\p{L}\p{N} &/.,'()-]{1,39}$/u;
+export const isCustomProfession = (value: string) => !bySlug.has(value) && CUSTOM_PROFESSION.test(value);
+
+/**
+ * Cleans what a user typed in "Other". If it matches a listed profession (by name), the listed one is used
+ * so the profile still appears under that directory filter.
+ */
+export function normalizeProfession(input: string): string | null {
+  const text = input.replace(/\s+/g, ' ').trim();
+  if (bySlug.has(text)) return text;
+  const listed = PROFESSIONS.find((p) => p.label.toLowerCase() === text.toLowerCase());
+  if (listed) return listed.slug;
+  return CUSTOM_PROFESSION.test(text) ? text : null;
+}
 
 /** Specializations valid for the given professions, de-duplicated. */
 export function specializationsFor(professionSlugs: string[]): string[] {
@@ -38,5 +55,5 @@ export function specializationsFor(professionSlugs: string[]): string[] {
 }
 
 export const ALL_SPECIALIZATIONS = [...new Set(PROFESSIONS.flatMap((p) => p.specializations))].sort();
-export const MAX_PROFESSIONS = 3;
+export const MAX_PROFESSIONS = 6;
 export const MAX_SPECIALIZATIONS = 8;

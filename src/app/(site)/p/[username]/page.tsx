@@ -2,17 +2,20 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { cache } from 'react';
-import { BriefcaseBusiness, CreditCard, EyeOff, FileText, Globe, FolderOpen, MapPin, MessageCircle, Phone, Settings } from 'lucide-react';
+import { BriefcaseBusiness, CreditCard, EyeOff, FileText, Globe, FolderOpen, Inbox, MapPin, MessageCircle, Phone, Settings } from 'lucide-react';
 import { ImageUpload } from '@/components/profile/image-upload';
+import { PhotoGallery } from '@/components/profile/photo-gallery';
 import { ProfileEditor } from '@/components/profile/profile-editor';
 import { ProjectEditor } from '@/components/profile/project-editor';
 import { InquiryDialog, ReportDialog, ShareTools } from '@/components/profile/visitor-tools';
 import { Button } from '@/components/ui/button';
 import { Alert, Badge, EmptyState } from '@/components/ui/misc';
-import { professionLabel } from '@/lib/professions';
+import { UpgradeBanner } from '@/components/upgrade-prompt';
+import { isProfession, professionLabel } from '@/lib/professions';
 import { getSession, isAdmin } from '@/server/auth';
 import { getEnv } from '@/server/db';
-import { getFullProfile } from '@/server/profiles';
+import { getPlanConfig } from '@/server/entitlements';
+import { countNewInquiries, getFullProfile } from '@/server/profiles';
 import { imageUrl } from '@/server/storage';
 
 type Props = { params: Promise<{ username: string }>; searchParams: Promise<{ welcome?: string }> };
@@ -63,10 +66,12 @@ export default async function ProfilePage({ params, searchParams }: Props) {
   const cover = imageUrl(profile.coverKey);
   const avatar = imageUrl(profile.avatarKey);
   const logo = imageUrl(profile.logoKey);
-  const photoCount = projects.reduce((sum, p) => sum + p.photos.length, 0);
-  const photosRemaining = Math.max(0, entitlements.limits.photos - photoCount);
+  const photoLimit = entitlements.limits.photosPerProject;
+  const premiumLimits = isOwner ? (await getPlanConfig()).limits.premium : null;
   const telHref = profile.phone ? `tel:${profile.phone.replace(/[^+\d]/g, '')}` : null;
   const { welcome } = await searchParams;
+  const newInquiries = isOwner ? await countNewInquiries(profile.id) : 0;
+  const atProjectLimit = projects.length >= entitlements.limits.projects;
 
   const jsonLd = {
     '@context': 'https://schema.org',
@@ -111,6 +116,12 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                 }}
               />
               <Button asChild variant="outline" size="sm">
+                <Link href="/inbox">
+                  <Inbox aria-hidden /> Requests
+                  {newInquiries > 0 && <span className="rounded-full bg-accent px-1.5 py-0.5 text-xs font-medium leading-none text-accent-foreground">{newInquiries}</span>}
+                </Link>
+              </Button>
+              <Button asChild variant="outline" size="sm">
                 <Link href="/quotations">
                   <FileText aria-hidden /> Quotations
                 </Link>
@@ -130,12 +141,12 @@ export default async function ProfilePage({ params, searchParams }: Props) {
         </div>
       )}
 
-      <div className="container-page grid gap-8 pb-8">
+      <div className={`container-page grid gap-8 pb-8 ${isOwner ? '' : 'max-sm:pb-28'}`}>
         {/* Cover + identity */}
         <div>
           <div className="relative -mx-4 h-36 overflow-hidden bg-gradient-to-br from-slate-800 to-slate-600 sm:mx-0 sm:mt-6 sm:h-56 sm:rounded-xl">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            {cover && <img src={cover} alt="" className="size-full object-cover" fetchPriority="high" />}
+            {cover && <img src={cover} alt="" data-fade className="size-full object-cover" fetchPriority="high" />}
             {isOwner && <ImageUpload kind="cover" label="Cover photo" className="absolute bottom-3 right-3" locked={!entitlements.limits.customCoverPhoto} />}
           </div>
           <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between sm:px-6">
@@ -178,7 +189,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
               <h1 className="text-2xl font-semibold sm:text-3xl">{profile.businessName}</h1>
               <div className="flex flex-wrap gap-2">
                 {professions.map((slug) => (
-                  <Link key={slug} href={`/directory?profession=${slug}`}>
+                  <Link key={slug} href={isProfession(slug) ? `/directory?profession=${slug}` : `/directory?q=${encodeURIComponent(slug)}`}>
                     <Badge variant="accent">{professionLabel(slug)}</Badge>
                   </Link>
                 ))}
@@ -219,23 +230,27 @@ export default async function ProfilePage({ params, searchParams }: Props) {
 
             <Section
               title={`Projects${projects.length ? ` (${projects.length})` : ''}`}
-              action={isOwner ? <ProjectEditor canAddProject={projects.length < entitlements.limits.projects} photosRemaining={photosRemaining} /> : undefined}
+              action={isOwner ? <ProjectEditor canAddProject={!atProjectLimit} photoLimit={photoLimit} /> : undefined}
             >
-              {isOwner && hiddenProjectCount > 0 && (
-                <Alert variant="warning">
-                  Your plan shows {entitlements.limits.projects} projects publicly. {hiddenProjectCount} newer project{hiddenProjectCount === 1 ? ' is' : 's are'} hidden from visitors.{' '}
-                  <Link href="/pricing" className="font-medium underline">
-                    Upgrade to show all
-                  </Link>
-                  .
-                </Alert>
-              )}
+              {isOwner && hiddenProjectCount > 0 ? (
+                <UpgradeBanner
+                  title={`${hiddenProjectCount} project${hiddenProjectCount === 1 ? ' is' : 's are'} hidden from visitors.`}
+                  body={`Your plan shows ${entitlements.limits.projects} projects publicly. Nothing was deleted — renew Premium to show them all again.`}
+                  cta="Show all my projects"
+                />
+              ) : isOwner && entitlements.plan === 'free' && atProjectLimit ? (
+                <UpgradeBanner
+                  title={`You’ve used all ${entitlements.limits.projects} project slots.`}
+                  body={`Clients choose builders who show more finished work. Premium shows up to ${premiumLimits?.projects ?? 50} projects with ${premiumLimits?.photosPerProject ?? 10} photos each.`}
+                  cta="Add more projects"
+                />
+              ) : null}
               {projects.length === 0 ? (
                 <EmptyState icon={<FolderOpen />} title="No projects yet" description={isOwner ? 'Add your first project with photos — profiles with projects get far more inquiries.' : 'This professional has not added projects yet.'} />
               ) : (
                 <div className="grid gap-6">
                   {projects.map((project) => (
-                    <article key={project.id} className="grid gap-3 rounded-lg border p-4 sm:p-5">
+                    <article key={project.id} className="grid gap-3 rounded-xl border bg-background p-4 shadow-card sm:p-5">
                       <div className="flex items-start justify-between gap-3">
                         <div className="grid gap-0.5">
                           <h3 className="font-semibold">{project.title}</h3>
@@ -243,24 +258,13 @@ export default async function ProfilePage({ params, searchParams }: Props) {
                         </div>
                         {isOwner && (
                           <ProjectEditor
-                            photosRemaining={photosRemaining}
+                            photoLimit={photoLimit}
                             project={{ id: project.id, title: project.title, description: project.description, location: project.location, year: project.year, photos: project.photos.map((p) => ({ id: p.id, url: imageUrl(p.key)! })) }}
                           />
                         )}
                       </div>
                       {project.description && <p className="whitespace-pre-line text-sm leading-relaxed text-foreground/90">{project.description}</p>}
-                      {project.photos.length > 0 && (
-                        <ul className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                          {project.photos.map((photo, index) => (
-                            <li key={photo.id} className="aspect-[4/3] overflow-hidden rounded-md bg-muted">
-                              <a href={imageUrl(photo.key)!} target="_blank" rel="noopener" aria-label={`Open photo ${index + 1} of ${project.title}`}>
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={imageUrl(photo.key)!} alt={`${project.title} — photo ${index + 1}`} loading="lazy" decoding="async" className="size-full object-cover transition-opacity hover:opacity-90" />
-                              </a>
-                            </li>
-                          ))}
-                        </ul>
-                      )}
+                      <PhotoGallery title={project.title} photos={project.photos.map((photo) => ({ id: photo.id, url: imageUrl(photo.key)! }))} />
                     </article>
                   ))}
                 </div>
@@ -269,9 +273,13 @@ export default async function ProfilePage({ params, searchParams }: Props) {
           </div>
 
           <aside className="grid content-start gap-4">
-            <div className="grid gap-4 rounded-lg border p-5">
+            <div className="grid gap-4 rounded-xl border bg-background p-5 shadow-card lg:sticky lg:top-20">
               <h2 className="font-semibold">Contact</h2>
-              {!isOwner && <InquiryDialog username={profile.username} businessName={profile.businessName} siteKey={env.TURNSTILE_SITE_KEY} />}
+              {!isOwner && (
+                <div className="hidden sm:block">
+                  <InquiryDialog username={profile.username} businessName={profile.businessName} siteKey={env.TURNSTILE_SITE_KEY} />
+                </div>
+              )}
               <ul className="grid gap-1 text-sm">
                 {telHref && (
                   <li>
@@ -301,7 +309,7 @@ export default async function ProfilePage({ params, searchParams }: Props) {
               </div>
             </div>
             {profile.serviceAreas.length > 0 && (
-              <div className="grid gap-3 rounded-lg border p-5">
+              <div className="grid gap-3 rounded-xl border bg-background p-5 shadow-card">
                 <h2 className="font-semibold">Service coverage</h2>
                 <p className="text-sm text-muted-foreground">{[...new Set([profile.province, ...profile.serviceAreas])].filter(Boolean).join(' · ')}</p>
               </div>
@@ -309,6 +317,21 @@ export default async function ProfilePage({ params, searchParams }: Props) {
             {!isOwner && <ReportDialog username={profile.username} siteKey={env.TURNSTILE_SITE_KEY} />}
           </aside>
         </div>
+
+        {!isOwner && (
+          <div className="fixed inset-x-0 bottom-0 z-30 flex gap-2 border-t bg-background/95 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] backdrop-blur sm:hidden" data-no-print>
+            {telHref && (
+              <Button asChild variant="outline" size="lg" className="shrink-0">
+                <a href={telHref} aria-label={`Call ${profile.businessName}`}>
+                  <Phone aria-hidden /> Call
+                </a>
+              </Button>
+            )}
+            <div className="flex-1 [&>button]:w-full">
+              <InquiryDialog username={profile.username} businessName={profile.businessName} siteKey={env.TURNSTILE_SITE_KEY} />
+            </div>
+          </div>
+        )}
 
         {!entitlements.limits.removePlatformBranding && (
           <p className="border-t pt-6 text-center text-sm text-muted-foreground">

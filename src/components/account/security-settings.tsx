@@ -149,18 +149,19 @@ export function TwoFactorCard({ enabled, required }: { enabled: boolean; require
   );
 }
 
-export function DeleteAccountCard() {
+export function DeleteAccountCard({ hasPassword = true }: { hasPassword?: boolean }) {
   const [password, setPassword] = useState('');
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   async function remove() {
     setLoading(true);
-    const { error } = await authClient.deleteUser({ password });
+    // Without a password the server requires a recent sign-in instead.
+    const { error } = await authClient.deleteUser(hasPassword ? { password } : {});
     setLoading(false);
     if (error) {
       setOpen(false);
-      return void toast.error('Could not delete the account. Check your password and try again.');
+      return void toast.error(hasPassword ? 'Could not delete the account. Check your password and try again.' : 'For your security, please log out, sign in again, and then delete your account.');
     }
     window.location.assign('/');
   }
@@ -172,10 +173,12 @@ export function DeleteAccountCard() {
         <CardDescription>Permanently removes your profile, projects, photos and quotations. This cannot be undone. Any remaining Premium time is forfeited.</CardDescription>
       </CardHeader>
       <CardContent className="grid max-w-sm gap-4">
-        <Field label="Confirm your password" htmlFor="del-password">
-          <Input id="del-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
-        </Field>
-        <Button variant="destructive" disabled={!password} className="justify-self-start" onClick={() => setOpen(true)}>
+        {hasPassword && (
+          <Field label="Confirm your password" htmlFor="del-password">
+            <Input id="del-password" type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </Field>
+        )}
+        <Button variant="destructive" disabled={hasPassword && !password} className="justify-self-start" onClick={() => setOpen(true)}>
           Delete my account
         </Button>
         <ConfirmDialog open={open} onOpenChange={setOpen} title="Delete your account?" description="Your public profile, portfolio and quotations will be erased immediately and cannot be recovered." confirmLabel="Delete permanently" loading={loading} onConfirm={remove} />

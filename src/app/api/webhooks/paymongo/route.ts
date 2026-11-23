@@ -1,4 +1,5 @@
 import { eq } from 'drizzle-orm';
+import { reportProblem } from '@/server/alerts';
 import { audit } from '@/server/audit';
 import { applyPaidCheckout, recordFailedPayment, recordRefund } from '@/server/billing';
 import { getDb, getEnv, schema } from '@/server/db';
@@ -22,6 +23,7 @@ export async function POST(request: Request) {
   const live = isLiveKey();
   if (!verifyWebhookSignature(rawBody, request.headers.get('paymongo-signature'), env.PAYMONGO_WEBHOOK_SECRET, { live })) {
     await audit({ actorType: 'system', action: 'webhook.signature_invalid', ip: request.headers.get('cf-connecting-ip') ?? undefined });
+    await reportProblem('webhook_signature', 'A PayMongo webhook arrived with an invalid signature. If this follows a real payment, the webhook secret or signature format is wrong and payments will not sync.');
     return new Response('Invalid signature', { status: 401 });
   }
 
@@ -56,7 +58,7 @@ export async function POST(request: Request) {
     }
   } catch (error) {
     // Do NOT record the event: a non-2xx response makes PayMongo retry, and processing is idempotent.
-    console.error('[webhook] processing failed', event.id, event.attributes.type, error);
+    await reportProblem('webhook_error', `Processing ${event.attributes.type} (${event.id}) failed: ${String(error).slice(0, 300)}`);
     return new Response('Processing failed', { status: 500 });
   }
 

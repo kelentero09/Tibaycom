@@ -11,7 +11,8 @@ export const metadata: Metadata = { title: 'New quotation', robots: { index: fal
 export default async function NewQuotationPage() {
   const { user } = await requireQuotationUser('/quotations/new');
   const [entitlements, used] = await Promise.all([getEntitlements(user.id), getQuotaUsage(user.id)]);
-  if (used >= entitlements.limits.quotationsPerMonth) redirect('/quotations');
+  const limit = entitlements.limits.quotationsPerMonth;
+  if (limit !== null && used >= limit) redirect('/quotations');
   return (
     <div className="container-page grid gap-6 py-8">
       <PageHeader title="New quotation" description="Totals update as you type. You can edit it after saving." />

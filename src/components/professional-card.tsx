@@ -8,10 +8,10 @@ import { Badge } from './ui/misc';
 export function ProfessionalCard({ pro }: { pro: DirectoryCard }) {
   const image = imageUrl(pro.avatarKey ?? pro.logoKey);
   return (
-    <Link href={`/p/${pro.username}`} className="flex gap-4 rounded-lg border bg-background p-4 transition-colors hover:border-foreground/30">
+    <Link href={`/p/${pro.username}`} className="card-interactive flex h-full gap-4 rounded-xl border bg-background p-4">
       <div className="flex size-16 shrink-0 items-center justify-center overflow-hidden rounded-full bg-muted text-xl font-semibold text-muted-foreground">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        {image ? <img src={image} alt="" loading="lazy" decoding="async" className="size-full object-cover" /> : pro.businessName[0]?.toUpperCase()}
+        {image ? <img src={image} alt="" loading="lazy" decoding="async" data-fade className="size-full object-cover" /> : pro.businessName[0]?.toUpperCase()}
       </div>
       <div className="grid min-w-0 content-start gap-1.5">
         <h3 className="truncate font-semibold">{pro.businessName}</h3>
