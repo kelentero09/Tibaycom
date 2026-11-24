@@ -30,7 +30,7 @@ const quotation = {
   total: 1,
   subtotal: 1,
 };
-const profileUpdate = { businessName: 'Renamed', bio: '', professions: ['mason'], specializations: [], services: [], yearsExperience: null, province: 'Cebu', city: 'Argao', serviceAreas: [], phone: '', contactEmail: '', facebookUrl: '', messengerUrl: '', isPublished: true };
+const profileUpdate = { intent: 'seeking_clients', businessName: 'Renamed', bio: '', professions: ['mason'], specializations: [], services: [], yearsExperience: null, province: 'Cebu', city: 'Argao', serviceAreas: [], phone: '', contactEmail: '', facebookUrl: '', messengerUrl: '', isPublished: true };
 
 beforeAll(async () => {
   await setupTestPlatform();
@@ -69,7 +69,7 @@ describe('authentication and CSRF', () => {
 
 describe('onboarding', () => {
   it('creates one profile per user and enforces unique, non-reserved usernames', async () => {
-    const input = { username: 'Frank-Builds', businessName: 'Frank Builds', professions: ['mason', 'carpenter'], province: 'Cebu', city: 'Argao' };
+    const input = { username: 'Frank-Builds', intent: 'seeking_clients', businessName: 'Frank Builds', professions: ['mason', 'carpenter'], province: 'Cebu', city: 'Argao' };
     expect((await call(createProfileRoute, { as: 'frank', body: { ...input, username: 'admin' } })).status).toBe(422);
     expect((await call(createProfileRoute, { as: 'frank', body: { ...input, username: 'pro-alice' } })).status).toBe(409);
     const created = await call(createProfileRoute, { as: 'frank', body: input });

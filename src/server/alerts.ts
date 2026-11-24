@@ -3,13 +3,14 @@ import { sql } from 'drizzle-orm';
 import { getDb, getEnv, optionalEnv } from './db';
 
 /** What can go wrong in production that the owner must hear about. */
-export type AlertKind = 'email' | 'payment_checkout' | 'payment_failed' | 'payment_rejected' | 'webhook_signature' | 'webhook_error' | 'api_error' | 'maintenance' | 'test';
+export type AlertKind = 'email' | 'payment_checkout' | 'payment_failed' | 'payment_rejected' | 'payment_refund_unknown' | 'webhook_signature' | 'webhook_error' | 'api_error' | 'maintenance' | 'test';
 
 export const ALERT_LABELS: Record<AlertKind, string> = {
   email: 'Emails are failing to send',
   payment_checkout: 'Checkout could not be started with PayMongo',
   payment_failed: 'Customer payments are failing',
   payment_rejected: 'A payment was rejected by integrity checks',
+  payment_refund_unknown: 'A refund event arrived without refund amounts',
   webhook_signature: 'Webhook deliveries with invalid signatures',
   webhook_error: 'Webhook processing errors',
   api_error: 'Unexpected server errors',

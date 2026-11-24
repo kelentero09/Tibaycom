@@ -52,7 +52,7 @@ export const isMockMode = () => {
   const env = getEnv();
   return !env.PAYMONGO_SECRET_KEY && env.APP_ENV !== 'production';
 };
-export const isLiveKey = () => getEnv().PAYMONGO_SECRET_KEY.startsWith('sk_live_');
+export const isLiveKey = () => (getEnv().PAYMONGO_SECRET_KEY ?? '').startsWith('sk_live_');
 
 async function request<T>(path: string, init: { method: 'GET' | 'POST'; body?: unknown; idempotencyKey?: string }): Promise<T> {
   const key = getEnv().PAYMONGO_SECRET_KEY;

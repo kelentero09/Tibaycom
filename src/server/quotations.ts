@@ -1,8 +1,8 @@
 import 'server-only';
-import { and, desc, eq, gte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte } from 'drizzle-orm';
 import { calculateQuotation, type QuotationInput } from '@/lib/quotation';
 import { getDb, newId, schema } from './db';
-import { currentPeriod, getEntitlements, type Entitlements } from './entitlements';
+import { consumeQuota, currentPeriod, getEntitlements, refundQuota, type Entitlements } from './entitlements';
 import { ApiError } from './http';
 
 const { quotations } = schema;
@@ -70,19 +70,7 @@ export async function createQuotation(userId: string, input: QuotationInput) {
   const period = currentPeriod();
   const db = getDb();
   // The counter always advances (it also numbers the quotation); a finite limit adds the "only while below it" guard.
-  const reserved =
-    limit === null
-      ? await db.all<{ count: number }>(sql`
-          INSERT INTO usage_counters (user_id, period, kind, count) VALUES (${userId}, ${period}, 'quotation', 1)
-          ON CONFLICT(user_id, period, kind) DO UPDATE SET count = count + 1
-          RETURNING count`)
-      : limit > 0
-        ? await db.all<{ count: number }>(sql`
-            INSERT INTO usage_counters (user_id, period, kind, count) VALUES (${userId}, ${period}, 'quotation', 1)
-            ON CONFLICT(user_id, period, kind) DO UPDATE SET count = count + 1 WHERE count < ${limit}
-            RETURNING count`)
-        : [];
-  const sequence = reserved[0]?.count;
+  const sequence = await consumeQuota(userId, 'quotation', period, limit);
   if (!sequence)
     throw new ApiError(402, `You have used all ${limit} quotations for this month on the ${entitlements.plan === 'premium' ? 'Premium' : 'Free'} plan.`, 'limit_reached');
 
@@ -92,7 +80,7 @@ export async function createQuotation(userId: string, input: QuotationInput) {
     await db.insert(quotations).values({ id, userId, number, ...toColumns(input) });
   } catch (error) {
     // Give the unit back if the insert itself failed.
-    await db.run(sql`UPDATE usage_counters SET count = count - 1 WHERE user_id = ${userId} AND period = ${period} AND kind = 'quotation' AND count > 0`);
+    await refundQuota(userId, 'quotation', period);
     throw error;
   }
   return { id, number };

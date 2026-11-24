@@ -51,7 +51,7 @@ export default async function SubscriptionPage({ searchParams }: Props) {
             </p>
           ) : (
             <p className="text-sm text-muted-foreground">
-              You are on the Free plan: {limits.projects} projects, {limits.photosPerProject} photos per project and {limits.quotationsPerMonth === null ? 'unlimited' : limits.quotationsPerMonth} quotations per month.
+              You are on the Free plan: {limits.projects} projects, {limits.photosPerProject} photos per project and {limits.quotationsPerMonth === null ? 'unlimited' : limits.quotationsPerMonth} quotations per month, {limits.updatesPerProject} timeline updates per project and {limits.postsPerDay === null ? 'unlimited' : limits.postsPerDay} community posts per day.
             </p>
           )}
           <SubscriptionPanel pricing={config.pricing} isPremium={isPremium} cancelAtPeriodEnd={subscription?.cancelAtPeriodEnd ?? false} returningPaymentId={returningPaymentId} cancelledCheckout={!!params.cancelled} />

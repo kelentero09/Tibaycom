@@ -1,8 +1,11 @@
 import Link from 'next/link';
 import { HardHat } from 'lucide-react';
 import { getSession, isAdmin } from '@/server/auth';
+import { countUnreadNotifications } from '@/server/community';
 import { getLocale, getT } from '@/server/locale';
 import { countNewInquiries, getProfileByUserId } from '@/server/profiles';
+import { countUnreadSentRequests } from '@/server/inquiries';
+import { NotificationBell } from './community/notification-bell';
 import { LanguageToggle } from './language-toggle';
 import { Button } from './ui/button';
 import { UserMenu } from './user-menu';
@@ -23,7 +26,11 @@ const navLink = 'rounded-md px-3 py-2 text-muted-foreground hover:bg-muted hover
 export async function SiteHeader() {
   const [session, t, locale] = await Promise.all([getSession(), getT(), getLocale()]);
   const profile = session ? await getProfileByUserId(session.user.id) : null;
-  const newInquiries = profile ? await countNewInquiries(profile.id) : 0;
+  const [newInquiries, unreadNotifications, unreadReplies] = await Promise.all([
+    profile ? countNewInquiries(profile.id) : 0,
+    session ? countUnreadNotifications(session.user.id) : 0,
+    session ? countUnreadSentRequests(session.user.id) : 0,
+  ]);
   return (
     <header className="sticky top-0 z-40 border-b bg-background/85 backdrop-blur-md">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-4 focus:top-2 focus:z-50 focus:rounded-md focus:bg-background focus:px-3 focus:py-2 focus:shadow-lift">
@@ -36,6 +43,9 @@ export async function SiteHeader() {
             <Link href="/directory" className={navLink}>
               {t.nav.find}
             </Link>
+            <Link href="/community" className={navLink}>
+              {t.nav.community}
+            </Link>
             <Link href="/pricing" className={navLink}>
               {t.nav.pricing}
             </Link>
@@ -43,8 +53,9 @@ export async function SiteHeader() {
         </div>
         <div className="flex items-center gap-1">
           <LanguageToggle locale={locale} label={t.nav.language} />
+          {session && <NotificationBell initialUnread={unreadNotifications} />}
           {session ? (
-            <UserMenu name={session.user.name} email={session.user.email} username={profile?.username ?? null} isAdmin={isAdmin(session.user)} newInquiries={newInquiries} />
+            <UserMenu name={session.user.name} email={session.user.email} username={profile?.username ?? null} isAdmin={isAdmin(session.user)} newInquiries={newInquiries} unreadReplies={unreadReplies} />
           ) : (
             <>
               <Button asChild variant="ghost" size="sm" className="hidden sm:inline-flex">
@@ -60,6 +71,9 @@ export async function SiteHeader() {
       <nav aria-label="Main mobile" className="container-page flex gap-1 border-t py-1 text-sm sm:hidden">
         <Link href="/directory" className={navLink}>
           {t.nav.find}
+        </Link>
+        <Link href="/community" className={navLink}>
+          {t.nav.community}
         </Link>
         <Link href="/pricing" className={navLink}>
           {t.nav.pricing}

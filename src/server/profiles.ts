@@ -1,9 +1,10 @@
 import 'server-only';
-import { and, asc, desc, eq, exists, inArray, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, exists, inArray, ne, sql } from 'drizzle-orm';
 import type { DirectoryQuery } from '@/lib/validation';
 import { getDb, schema } from './db';
-import { getEntitlements, type Entitlements } from './entitlements';
+import { getEntitlements, premiumSql, type Entitlements } from './entitlements';
 import { ApiError } from './http';
+import { getRatings, type RatingSummary } from './reviews';
 
 const { profiles, profileProfessions, profileSpecializations, projects, projectPhotos } = schema;
 
@@ -52,6 +53,29 @@ export async function getProjects(profileId: string, limit?: number): Promise<Pr
   return rows.map((p) => ({ ...p, photos: photos.filter((ph) => ph.projectId === p.id).map(({ id, key }) => ({ id, key })) }));
 }
 
+export type ProjectUpdateRow = typeof schema.projectUpdates.$inferSelect;
+
+/** Timeline entries for one project, oldest first. Visitors see at most the owner's current plan allowance. */
+export async function getProjectUpdates(projectId: string, limit?: number): Promise<ProjectUpdateRow[]> {
+  const base = getDb()
+    .select()
+    .from(schema.projectUpdates)
+    .where(eq(schema.projectUpdates.projectId, projectId))
+    .orderBy(asc(schema.projectUpdates.date), asc(schema.projectUpdates.createdAt));
+  return limit === undefined ? base : base.limit(limit);
+}
+
+/** Number of timeline entries per project, for cards and the timeline section. */
+export async function countProjectUpdates(projectIds: string[]) {
+  if (!projectIds.length) return new Map<string, number>();
+  const rows = await getDb()
+    .select({ projectId: schema.projectUpdates.projectId, n: sql<number>`count(*)` })
+    .from(schema.projectUpdates)
+    .where(inArray(schema.projectUpdates.projectId, projectIds))
+    .groupBy(schema.projectUpdates.projectId);
+  return new Map(rows.map((r) => [r.projectId, r.n]));
+}
+
 export type FullProfile = {
   profile: ProfileRow;
   professions: string[];
@@ -65,21 +89,23 @@ export type FullProfile = {
 /**
  * Loads a profile for display. Visitors only ever receive what the owner's *current* plan allows
  * (oldest projects first, photos capped per project, no cover on Free) — a lapsed Premium loses the extras without data loss.
+ * `preview` lets the owner see exactly that visitor view of their own page.
  */
-export async function getFullProfile(username: string, viewerId: string | null, viewerIsAdmin = false): Promise<(FullProfile & { isOwner: boolean }) | null> {
+export async function getFullProfile(username: string, viewerId: string | null, viewerIsAdmin = false, preview = false): Promise<(FullProfile & { isOwner: boolean }) | null> {
   const profile = await getDb().select().from(profiles).where(eq(profiles.username, username.toLowerCase())).get();
   if (!profile) return null;
   const isOwner = viewerId === profile.userId;
   if (!isOwner && !viewerIsAdmin && (profile.status !== 'active' || !profile.isPublished)) return null;
+  const asVisitor = !isOwner || preview;
 
   const [tags, entitlements, allProjects] = await Promise.all([loadTags([profile.id]), getEntitlements(profile.userId), getProjects(profile.id)]);
   let visible = allProjects;
-  if (!isOwner) {
+  if (asVisitor) {
     const perProject = entitlements.limits.photosPerProject;
     visible = allProjects.slice(0, entitlements.limits.projects).map((p) => ({ ...p, photos: p.photos.slice(0, perProject) }));
   }
   return {
-    profile: !isOwner && !entitlements.limits.customCoverPhoto ? { ...profile, coverKey: null } : profile,
+    profile: asVisitor && !entitlements.limits.customCoverPhoto ? { ...profile, coverKey: null } : profile,
     professions: tags.professions.get(profile.id) ?? [],
     specializations: tags.specializations.get(profile.id) ?? [],
     projects: visible,
@@ -89,14 +115,30 @@ export async function getFullProfile(username: string, viewerId: string | null, 
   };
 }
 
-export type DirectoryCard = Pick<ProfileRow, 'id' | 'username' | 'businessName' | 'bio' | 'province' | 'city' | 'avatarKey' | 'logoKey' | 'yearsExperience'> & {
+export type DirectoryCard = Pick<ProfileRow, 'id' | 'username' | 'businessName' | 'bio' | 'province' | 'city' | 'avatarKey' | 'logoKey' | 'yearsExperience' | 'intent'> & {
   professions: string[];
+  /** Paid Premium right now: listed first and marked "Featured". */
+  isPremium: boolean;
+  /** Average star rating, or null before the first review. */
+  rating: RatingSummary | null;
 };
+
+/** Profile photos of recently active public members, for the small avatar stack on the home page. */
+export async function getMemberAvatars(limit = 5) {
+  return getDb()
+    .select({ username: profiles.username, businessName: profiles.businessName, avatarKey: profiles.avatarKey })
+    .from(profiles)
+    .where(and(eq(profiles.status, 'active'), eq(profiles.isPublished, true), sql`${profiles.avatarKey} IS NOT NULL`))
+    .orderBy(desc(profiles.updatedAt))
+    .limit(limit);
+}
 
 /** Paginated directory search. Fetches one extra row instead of running a COUNT(*). */
 export async function searchDirectory(query: DirectoryQuery): Promise<{ results: DirectoryCard[]; hasMore: boolean }> {
   const db = getDb();
-  const conditions = [eq(profiles.status, 'active'), eq(profiles.isPublished, true)];
+  // Homeowners looking for a contractor have a profile for the community but are never listed as professionals.
+  const conditions = [eq(profiles.status, 'active'), eq(profiles.isPublished, true), ne(profiles.intent, 'seeking_contractor')];
+  if (query.intent && query.intent !== 'seeking_contractor') conditions.push(eq(profiles.intent, query.intent));
   if (query.province) conditions.push(eq(profiles.province, query.province));
   if (query.province && query.city) conditions.push(eq(profiles.city, query.city));
   if (query.q) {
@@ -127,16 +169,23 @@ export async function searchDirectory(query: DirectoryQuery): Promise<{ results:
       avatarKey: profiles.avatarKey,
       logoKey: profiles.logoKey,
       yearsExperience: profiles.yearsExperience,
+      intent: profiles.intent,
+      isPremium: premiumSql('profiles'),
     })
     .from(profiles)
     .where(and(...conditions))
-    .orderBy(desc(profiles.updatedAt))
+    // Premium members rank first; within each group the most recently updated profiles lead.
+    .orderBy(desc(premiumSql('profiles')), desc(profiles.updatedAt), desc(profiles.id))
     .limit(DIRECTORY_PAGE_SIZE + 1)
     .offset((query.page - 1) * DIRECTORY_PAGE_SIZE);
 
   const page = rows.slice(0, DIRECTORY_PAGE_SIZE);
-  const tags = await loadTags(page.map((r) => r.id));
-  return { results: page.map((r) => ({ ...r, professions: tags.professions.get(r.id) ?? [] })), hasMore: rows.length > DIRECTORY_PAGE_SIZE };
+  const ids = page.map((r) => r.id);
+  const [tags, ratings] = await Promise.all([loadTags(ids), getRatings(ids)]);
+  return {
+    results: page.map((r) => ({ ...r, isPremium: !!r.isPremium, professions: tags.professions.get(r.id) ?? [], rating: ratings.get(r.id) ?? null })),
+    hasMore: rows.length > DIRECTORY_PAGE_SIZE,
+  };
 }
 
 /** Replaces the profession / specialization tag sets for a profile in one batch. */
@@ -158,5 +207,5 @@ export async function countNewInquiries(profileId: string) {
 
 export async function listInquiries(profileId: string, archived: boolean): Promise<InquiryRow[]> {
   const status = archived ? eq(schema.inquiries.status, 'archived') : sql`${schema.inquiries.status} != 'archived'`;
-  return getDb().select().from(schema.inquiries).where(and(eq(schema.inquiries.profileId, profileId), status)).orderBy(desc(schema.inquiries.createdAt)).limit(100);
+  return getDb().select().from(schema.inquiries).where(and(eq(schema.inquiries.profileId, profileId), status)).orderBy(desc(sql`COALESCE(${schema.inquiries.lastMessageAt}, ${schema.inquiries.createdAt})`)).limit(100);
 }

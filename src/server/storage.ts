@@ -3,7 +3,7 @@ import { IMAGE_RULES } from '@/lib/plans';
 import { getEnv } from './db';
 import { ApiError } from './http';
 
-export type ImageKind = 'avatar' | 'logo' | 'cover' | 'project';
+export type ImageKind = 'avatar' | 'logo' | 'cover' | 'project' | 'post';
 type Sniffed = { type: 'image/webp' | 'image/jpeg' | 'image/png'; ext: 'webp' | 'jpg' | 'png' };
 
 /** Detects the real format from magic bytes — the client-supplied MIME type and filename are never trusted. */
@@ -38,7 +38,7 @@ export async function deleteImages(keys: (string | null | undefined)[]) {
   if (list.length) await getEnv().BUCKET.delete(list);
 }
 
-export const IMAGE_KEY_PATTERN = /^(avatar|logo|cover|project)\/[A-Za-z0-9_-]+\/[0-9a-f-]{36}\.(webp|jpg|png)$/;
+export const IMAGE_KEY_PATTERN = /^(avatar|logo|cover|project|post)\/[A-Za-z0-9_-]+\/[0-9a-f-]{36}\.(webp|jpg|png)$/;
 export const imageUrl = (key: string | null | undefined) => (key ? `/img/${key}` : null);
 
 /** Reads a raw image request body with a hard size cap. */
@@ -53,7 +53,7 @@ export async function readImageBody(request: Request): Promise<Uint8Array> {
 /** Removes every image a user owns (keys are namespaced by user id). Used on account deletion. */
 export async function deleteUserImages(userId: string) {
   const bucket = getEnv().BUCKET;
-  for (const kind of ['avatar', 'logo', 'cover', 'project']) {
+  for (const kind of ['avatar', 'logo', 'cover', 'project', 'post']) {
     let cursor: string | undefined;
     do {
       const page = await bucket.list({ prefix: `${kind}/${userId}/`, cursor });

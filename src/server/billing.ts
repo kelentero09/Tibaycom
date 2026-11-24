@@ -192,7 +192,13 @@ export async function recordRefund(payment: PaymongoPayment) {
   const db = getDb();
   const row = await db.select().from(payments).where(eq(payments.providerPaymentId, payment.id)).get();
   if (!row) return;
-  const refunded = Math.min(row.amount, (payment.attributes.refunds ?? []).reduce((sum, r) => sum + (r.attributes?.amount ?? 0), 0) || row.amount);
+  const refunds = payment.attributes.refunds ?? [];
+  const refunded = Math.min(row.amount, refunds.reduce((sum, r) => sum + (r.attributes?.amount ?? 0), 0));
+  if (refunded === 0) {
+    // Never assume a full refund from an event without amounts: that would revoke Premium wrongly.
+    await reportProblem('payment_refund_unknown', `Refund event for payment ${row.id} carried no refund amounts; check it in the PayMongo dashboard.`);
+    return;
+  }
   if (refunded <= row.refundedAmount) return; // already recorded
   const full = refunded >= row.amount;
   await db.update(payments).set({ refundedAmount: refunded, status: full ? 'refunded' : row.status, updatedAt: new Date() }).where(eq(payments.id, row.id));

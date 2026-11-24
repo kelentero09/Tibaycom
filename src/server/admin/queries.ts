@@ -67,8 +67,32 @@ export const adminLists = {
   reports: (p: ListParams) => {
     const status = p.status && ['open', 'resolved', 'dismissed'].includes(p.status) ? sql`AND r.status = ${p.status}` : sql``;
     return run(
-      sql`SELECT r.id, r.reason, r.details, r.reporter_email AS reporterEmail, r.status, r.created_at AS createdAt, p.id AS profileId, p.username, p.business_name AS businessName, p.status AS profileStatus
-          FROM reports r JOIN profiles p ON p.id = r.profile_id WHERE 1 = 1 ${status} ORDER BY (r.status = 'open') DESC, r.created_at DESC ${paging(p)}`,
+      sql`SELECT r.id, r.reason, r.details, r.reporter_email AS reporterEmail, r.status, r.created_at AS createdAt, p.id AS profileId, p.username, p.business_name AS businessName, p.status AS profileStatus,
+                 CASE WHEN r.review_id IS NOT NULL THEN 'review' WHEN r.comment_id IS NOT NULL THEN 'comment' WHEN r.post_id IS NOT NULL THEN 'post' ELSE 'profile' END AS target,
+                 r.post_id AS postId, r.comment_id AS commentId, r.review_id AS reviewId, substr(COALESCE(rv.body, c.body, po.body, ''), 1, 140) AS excerpt, COALESCE(rv.status, c.status, po.status) AS contentStatus
+          FROM reports r JOIN profiles p ON p.id = r.profile_id LEFT JOIN posts po ON po.id = r.post_id LEFT JOIN post_comments c ON c.id = r.comment_id LEFT JOIN reviews rv ON rv.id = r.review_id WHERE 1 = 1 ${status} ORDER BY (r.status = 'open') DESC, r.created_at DESC ${paging(p)}`,
+      p,
+    );
+  },
+  posts: (p: ListParams) => {
+    const search = p.q ? sql`AND (po.body LIKE ${likePattern(p.q)} ESCAPE '\\' OR pr.username LIKE ${likePattern(p.q)} ESCAPE '\\')` : sql``;
+    const status = p.status === 'active' || p.status === 'hidden' ? sql`AND po.status = ${p.status}` : sql``;
+    return run(
+      sql`SELECT po.id, po.created_at AS createdAt, po.kind, substr(po.body, 1, 160) AS body, po.heart_count AS hearts, po.comment_count AS comments, po.status,
+                 pr.id AS profileId, pr.username, pr.business_name AS businessName,
+                 (SELECT COUNT(*) FROM reports r WHERE r.post_id = po.id AND r.status = 'open') AS openReports
+          FROM posts po JOIN profiles pr ON pr.id = po.profile_id WHERE 1 = 1 ${search} ${status} ORDER BY po.created_at DESC ${paging(p)}`,
+      p,
+    );
+  },
+  reviews: (p: ListParams) => {
+    const search = p.q ? sql`AND (rv.body LIKE ${likePattern(p.q)} ESCAPE '\\' OR pr.username LIKE ${likePattern(p.q)} ESCAPE '\\' OR u.email LIKE ${likePattern(p.q)} ESCAPE '\\')` : sql``;
+    const status = p.status === 'active' || p.status === 'hidden' ? sql`AND rv.status = ${p.status}` : sql``;
+    return run(
+      sql`SELECT rv.id, rv.created_at AS createdAt, rv.rating, substr(rv.body, 1, 160) AS body, rv.verified, rv.status, u.email AS authorEmail,
+                 pr.id AS profileId, pr.username, pr.business_name AS businessName,
+                 (SELECT COUNT(*) FROM reports r WHERE r.review_id = rv.id AND r.status = 'open') AS openReports
+          FROM reviews rv JOIN profiles pr ON pr.id = rv.profile_id JOIN user u ON u.id = rv.author_user_id WHERE 1 = 1 ${search} ${status} ORDER BY rv.created_at DESC ${paging(p)}`,
       p,
     );
   },

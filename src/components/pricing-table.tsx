@@ -14,6 +14,8 @@ const rows: { label: string; value: (limits: PlanLimits) => string | boolean }[]
   { label: 'Shareable quotation links', value: () => true },
   { label: 'Portfolio projects', value: (l) => String(l.projects) },
   { label: 'Photos per project', value: (l) => String(l.photosPerProject) },
+  { label: 'Project timeline updates', value: (l) => `${l.updatesPerProject} per project` },
+  { label: 'Community posts', value: (l) => (l.postsPerDay === null ? 'Unlimited' : `${l.postsPerDay} / day`) },
   { label: 'Quotations (link or PDF)', value: (l) => (l.quotationsPerMonth === null ? 'Unlimited' : `${l.quotationsPerMonth} / month`) },
   { label: 'Your logo & branding on quotations', value: (l) => l.customQuotationBranding },
   { label: 'Quotation history', value: (l) => l.quotationHistory },
@@ -33,7 +35,7 @@ type Props = { config: PlanConfig; freeHref: string; premiumHref: string; labels
 export function PricingTable({ config, freeHref, premiumHref, labels, compact }: Props) {
   const { monthly, annual } = config.pricing;
   const savings = monthly * 12 - annual;
-  const highlights = (limits: PlanLimits) => [`${limits.projects} projects · ${limits.photosPerProject} photos each`, limits.quotationsPerMonth === null ? `${formatQuota(null)} quotations` : `${limits.quotationsPerMonth} quotations / month`];
+  const highlights = (limits: PlanLimits) => [`${limits.projects} projects · ${limits.photosPerProject} photos each`, limits.quotationsPerMonth === null ? `${formatQuota(null)} quotations` : `${limits.quotationsPerMonth} quotations / month`, limits.postsPerDay === null ? 'Unlimited community posts' : `${limits.postsPerDay} community posts / day`];
   return (
     <div className="grid gap-8">
       <div className="grid gap-4 sm:grid-cols-2">

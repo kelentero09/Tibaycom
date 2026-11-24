@@ -28,7 +28,7 @@ export const PUT = route({ access: 'user', limit: { name: 'upload', max: 60, win
   return { url: imageUrl(key) };
 });
 
-export const DELETE = route({ access: 'user' }, async ({ request, user }) => {
+export const DELETE = route({ access: 'user', limit: { name: 'image-delete', max: 30, windowSeconds: 600 } }, async ({ request, user }) => {
   const kind = kindFrom(request);
   const profile = await requireOwnProfile(user.id);
   await getDb().update(schema.profiles).set({ [column[kind]]: null, updatedAt: new Date() }).where(eq(schema.profiles.id, profile.id));

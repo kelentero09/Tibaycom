@@ -16,7 +16,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     .orderBy(desc(profiles.updatedAt))
     .limit(40_000);
   return [
-    ...['', '/directory', '/pricing', '/about', '/contact', '/privacy', '/terms'].map((path) => ({ url: `${base}${path}`, changeFrequency: 'weekly' as const })),
+    ...['', '/directory', '/community', '/pricing', '/about', '/contact', '/privacy', '/terms'].map((path) => ({ url: `${base}${path}`, changeFrequency: 'weekly' as const })),
     ...PROFESSIONS.map((p) => ({ url: `${base}/directory?profession=${p.slug}`, changeFrequency: 'daily' as const })),
     ...rows.map((row) => ({ url: `${base}/p/${row.username}`, lastModified: row.updatedAt, changeFrequency: 'weekly' as const })),
   ];

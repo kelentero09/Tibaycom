@@ -21,6 +21,7 @@ export const POST = route({ access: 'user', limit: { name: 'profile-create', max
         id,
         userId: user.id,
         username: input.username,
+        intent: input.intent,
         businessName: input.businessName,
         province: input.province,
         city: input.city,

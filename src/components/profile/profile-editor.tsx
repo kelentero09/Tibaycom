@@ -5,8 +5,10 @@ import { useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, errorMessage } from '@/lib/api-client';
+import { isProfessionalIntent } from '@/lib/community';
 import { MAX_SPECIALIZATIONS, specializationsFor } from '@/lib/professions';
 import type { ProfileUpdateInput } from '@/lib/validation';
+import { IntentPicker } from '../intent-picker';
 import { ChipSelect, LocationFields, useLocations } from '../location-fields';
 import { ProfessionPicker } from '../profession-picker';
 import { Button } from '../ui/button';
@@ -26,7 +28,8 @@ export function ProfileEditor({ initial }: { initial: EditableProfile }) {
   const [saving, setSaving] = useState(false);
   const set = <K extends keyof EditableProfile>(key: K, value: EditableProfile[K]) => setForm((f) => ({ ...f, [key]: value }));
 
-  const availableSpecs = specializationsFor(form.professions);
+  const professional = isProfessionalIntent(form.intent);
+  const availableSpecs = professional ? specializationsFor(form.professions) : [];
 
   async function save(event: React.FormEvent) {
     event.preventDefault();
@@ -34,7 +37,7 @@ export function ProfileEditor({ initial }: { initial: EditableProfile }) {
     setError(null);
     const services = servicesText.split('\n').map((s) => s.trim()).filter(Boolean);
     try {
-      await api('/api/profile', { method: 'PATCH', body: { ...form, services, specializations: form.specializations.filter((s) => availableSpecs.includes(s)) } });
+      await api('/api/profile', { method: 'PATCH', body: { ...form, services: professional ? services : [], professions: professional ? form.professions : [], specializations: form.specializations.filter((s) => availableSpecs.includes(s)) } });
       toast.success('Profile updated');
       setOpen(false);
       router.refresh();
@@ -65,19 +68,22 @@ export function ProfileEditor({ initial }: { initial: EditableProfile }) {
       <DialogContent title="Edit profile" description="Changes appear on your public page right away." className="sm:max-w-2xl">
         <form onSubmit={save} className="grid gap-5" noValidate>
           {error && <Alert variant="destructive">{error}</Alert>}
-          <Field label="Business or display name" htmlFor="pe-name" required>
+          <IntentPicker value={form.intent} onChange={(v) => set('intent', v)} legend="I am on Tibay because…" idPrefix="pe-intent" />
+          <Field label={professional ? 'Business or display name' : 'Your name'} htmlFor="pe-name" required>
             <Input id="pe-name" value={form.businessName} maxLength={80} onChange={(e) => set('businessName', e.target.value)} />
           </Field>
           <Field label="About" htmlFor="pe-bio" hint={`${form.bio.length}/1500 — what you build, how long you have been doing it, what clients can expect.`}>
             <Textarea id="pe-bio" rows={5} value={form.bio} maxLength={1500} aria-describedby="pe-bio-help" onChange={(e) => set('bio', e.target.value)} />
           </Field>
-          <ProfessionPicker legend="Professions" value={form.professions} onChange={(v) => set('professions', v)} idPrefix="pe-prof" />
+          {professional && <ProfessionPicker legend="Professions" value={form.professions} onChange={(v) => set('professions', v)} idPrefix="pe-prof" />}
           {availableSpecs.length > 0 && (
             <ChipSelect legend="Specializations" hint={`Up to ${MAX_SPECIALIZATIONS}. Clients can filter the directory by these.`} options={availableSpecs.map((s) => ({ value: s, label: s }))} selected={form.specializations.filter((s) => availableSpecs.includes(s))} onChange={(v) => set('specializations', v)} max={MAX_SPECIALIZATIONS} />
           )}
-          <Field label="Services offered" htmlFor="pe-services" hint="One service per line, up to 15.">
-            <Textarea id="pe-services" rows={4} value={servicesText} aria-describedby="pe-services-help" onChange={(e) => setServicesText(e.target.value)} placeholder={'House construction\nRenovation\nRoofing'} />
-          </Field>
+          {professional && (
+            <Field label="Services offered" htmlFor="pe-services" hint="One service per line, up to 15.">
+              <Textarea id="pe-services" rows={4} value={servicesText} aria-describedby="pe-services-help" onChange={(e) => setServicesText(e.target.value)} placeholder={'House construction\nRenovation\nRoofing'} />
+            </Field>
+          )}
           <Field label="Years of experience" htmlFor="pe-years">
             <Input id="pe-years" type="number" min={0} max={70} inputMode="numeric" value={form.yearsExperience ?? ''} onChange={(e) => set('yearsExperience', e.target.value === '' ? null : Math.max(0, Math.min(70, Math.trunc(Number(e.target.value)))))} />
           </Field>

@@ -6,7 +6,7 @@ import { deleteImages } from '@/server/storage';
 
 const { projectPhotos } = schema;
 
-export const DELETE = route<'user', { id: string }>({ access: 'user' }, async ({ user, params }) => {
+export const DELETE = route<'user', { id: string }>({ access: 'user', limit: { name: 'photo-delete', max: 60, windowSeconds: 600 } }, async ({ user, params }) => {
   const profile = await requireOwnProfile(user.id);
   const deleted = await getDb()
     .delete(projectPhotos)

@@ -8,6 +8,7 @@ import { getDb, getEnv, schema } from './db';
 const CURSOR_KEY = 'r2_cleanup_cursor';
 const ORPHAN_GRACE_MS = 24 * 3600_000;
 export const INQUIRY_RETENTION_DAYS = 180;
+export const NOTIFICATION_RETENTION_DAYS = 90;
 const chunk = <T>(list: T[], size: number) => Array.from({ length: Math.ceil(list.length / size) }, (_, i) => list.slice(i * size, (i + 1) * size));
 
 /**
@@ -25,14 +26,16 @@ export async function cleanupOrphanedImages(pageSize = 500) {
   const referenced = new Set<string>();
   // D1 allows 100 bound parameters per statement.
   for (const keys of chunk(candidates, 90)) {
-    const [photos, profiles] = await Promise.all([
+    const [photos, postPhotos, profiles] = await Promise.all([
       db.select({ key: schema.projectPhotos.key }).from(schema.projectPhotos).where(inArray(schema.projectPhotos.key, keys)),
+      db.select({ key: schema.postPhotos.key }).from(schema.postPhotos).where(inArray(schema.postPhotos.key, keys)),
       db
         .select({ a: schema.profiles.avatarKey, l: schema.profiles.logoKey, c: schema.profiles.coverKey })
         .from(schema.profiles)
         .where(sql`${inArray(schema.profiles.avatarKey, keys)} OR ${inArray(schema.profiles.logoKey, keys)} OR ${inArray(schema.profiles.coverKey, keys)}`),
     ]);
     photos.forEach((p) => referenced.add(p.key));
+    postPhotos.forEach((p) => referenced.add(p.key));
     profiles.forEach((p) => [p.a, p.l, p.c].forEach((k) => k && referenced.add(k)));
   }
   const orphans = candidates.filter((key) => !referenced.has(key));
@@ -54,7 +57,9 @@ async function pruneExpiredRows(now = Date.now()) {
     db.delete(schema.webhookEvents).where(lt(schema.webhookEvents.receivedAt, new Date(now - 60 * 86_400_000))),
     db.delete(schema.verification).where(lt(schema.verification.expiresAt, new Date(now - 86_400_000))),
     db.delete(schema.session).where(lt(schema.session.expiresAt, new Date(now))),
-    db.delete(schema.inquiries).where(lt(schema.inquiries.createdAt, new Date(now - INQUIRY_RETENTION_DAYS * 86_400_000))),
+    // Retention counts from the last message, so an active conversation is never cut off mid-way.
+    db.delete(schema.inquiries).where(lt(sql`COALESCE(${schema.inquiries.lastMessageAt}, ${schema.inquiries.createdAt})`, now - INQUIRY_RETENTION_DAYS * 86_400_000)),
+    db.delete(schema.notifications).where(lt(schema.notifications.createdAt, new Date(now - NOTIFICATION_RETENTION_DAYS * 86_400_000))),
   ]);
 }
 

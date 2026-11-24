@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Activity, BarChart3, CreditCard, Flag, IdCard, ReceiptText, ScrollText, Settings, Users } from 'lucide-react';
+import { Activity, BarChart3, CreditCard, Flag, IdCard, MessagesSquare, ReceiptText, ScrollText, Settings, Star, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const items = [
@@ -11,6 +11,8 @@ const items = [
   { href: '/admin/profiles', label: 'Profiles', icon: IdCard },
   { href: '/admin/subscriptions', label: 'Subscriptions', icon: CreditCard },
   { href: '/admin/transactions', label: 'Transactions', icon: ReceiptText },
+  { href: '/admin/community', label: 'Community', icon: MessagesSquare },
+  { href: '/admin/reviews', label: 'Reviews', icon: Star },
   { href: '/admin/reports', label: 'Reports', icon: Flag },
   { href: '/admin/audit', label: 'Audit log', icon: ScrollText },
   { href: '/admin/settings', label: 'Settings', icon: Settings },

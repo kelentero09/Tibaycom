@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import { useRef, useState } from 'react';
 import { Check, Copy, Download, Flag, QrCode, Send, Share2 } from 'lucide-react';
 import { toast } from 'sonner';
@@ -17,7 +18,8 @@ export function InquiryDialog({ username, businessName, siteKey, size = 'lg' }: 
   const captcha = useRef<TurnstileHandle>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sent, setSent] = useState<{ threadUrl: string; emailReplies: boolean } | null>(null);
+  const [copied, setCopied] = useState(false);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -26,8 +28,8 @@ export function InquiryDialog({ username, businessName, siteKey, size = 'lg' }: 
     setLoading(true);
     setError(null);
     try {
-      await api(`/api/inquiries/${username}`, { method: 'POST', body: { name: form.get('name'), contact: form.get('contact'), message: form.get('message'), turnstileToken: token } });
-      setSent(true);
+      const result = await api<{ threadUrl: string; emailReplies: boolean }>(`/api/inquiries/${username}`, { method: 'POST', body: { name: form.get('name'), contact: form.get('contact'), message: form.get('message'), turnstileToken: token } });
+      setSent(result);
     } catch (err) {
       setError(errorMessage(err));
       captcha.current?.reset();
@@ -37,19 +39,48 @@ export function InquiryDialog({ username, businessName, siteKey, size = 'lg' }: 
   }
 
   return (
-    <Dialog open={open} onOpenChange={(next) => (setOpen(next), next && (setSent(false), setError(null), setToken(null)))}>
+    <Dialog open={open} onOpenChange={(next) => (setOpen(next), next && (setSent(null), setError(null), setToken(null), setCopied(false)))}>
       <DialogTrigger asChild>
         <Button variant="accent" size={size} className="w-full sm:w-auto">
           <Send aria-hidden /> Request a quotation
         </Button>
       </DialogTrigger>
-      <DialogContent title={`Contact ${businessName}`} description="Describe your project. They will reply using the contact details you provide.">
+      <DialogContent title={`Contact ${businessName}`} description="Describe your project. They can reply here on Tibay or contact you directly.">
         {sent ? (
           <div className="grid gap-4">
-            <Alert variant="success">Your request was sent. {businessName} will contact you directly.</Alert>
-            <Button variant="outline" onClick={() => setOpen(false)}>
-              Close
-            </Button>
+            <Alert variant="success">Your request was sent to {businessName}.</Alert>
+            <div className="grid gap-2 rounded-lg border bg-subtle p-3">
+              <p className="text-sm font-medium">Your private conversation link</p>
+              <p className="text-sm text-muted-foreground">
+                Open it to read {businessName}’s reply and answer back.{' '}
+                {sent.emailReplies ? 'We will also email you when they reply.' : 'Save it — we cannot email you because you did not give an email address.'}
+              </p>
+              <div className="flex gap-2">
+                <input readOnly value={sent.threadUrl} aria-label="Conversation link" className="h-9 min-w-0 flex-1 rounded-md border bg-background px-2 text-xs" onFocus={(e) => e.currentTarget.select()} />
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    try {
+                      await navigator.clipboard.writeText(sent.threadUrl);
+                      setCopied(true);
+                    } catch {
+                      toast.error('Could not copy the link');
+                    }
+                  }}
+                >
+                  {copied ? <Check aria-hidden /> : <Copy aria-hidden />} {copied ? 'Copied' : 'Copy'}
+                </Button>
+              </div>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button variant="outline" onClick={() => setOpen(false)}>
+                Close
+              </Button>
+              <Button asChild>
+                <Link href={new URL(sent.threadUrl).pathname}>Open conversation</Link>
+              </Button>
+            </div>
           </div>
         ) : (
           <form onSubmit={submit} className="grid gap-4" noValidate>
@@ -67,7 +98,7 @@ export function InquiryDialog({ username, businessName, siteKey, size = 'lg' }: 
             <Button type="submit" variant="accent" loading={loading}>
               Send request
             </Button>
-            <p className="text-xs text-muted-foreground">Your details are sent only to this professional and are not stored by Tibay.</p>
+            <p className="text-xs text-muted-foreground">Your details are shared only with this professional. Tibay keeps the conversation for 180 days after the last message.</p>
           </form>
         )}
       </DialogContent>

@@ -1,9 +1,12 @@
 import { sql } from 'drizzle-orm';
-import { index, integer, primaryKey, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { index, integer, primaryKey, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core';
+// Relative import: drizzle-kit does not resolve the @/ alias.
+import { INTENTS as PROFILE_INTENTS, POST_KIND_VALUES as POST_KINDS, PROJECT_STATUS_VALUES as PROJECT_STATUSES } from '../../lib/community';
 
 const ts = (name: string) => integer(name, { mode: 'timestamp_ms' });
 const bool = (name: string) => integer(name, { mode: 'boolean' });
 const now = sql`(unixepoch() * 1000)`;
+
 
 /* ------------------------------------------------------------------ */
 /* Better Auth tables (core + admin + two-factor plugins)              */
@@ -131,6 +134,8 @@ export const profiles = sqliteTable(
     avatarKey: text('avatar_key'),
     logoKey: text('logo_key'),
     coverKey: text('cover_key'),
+    /** What the member is on Tibay for; drives the directory, badges and which sections show. */
+    intent: text('intent', { enum: PROFILE_INTENTS }).notNull().default('seeking_clients'),
     /** Owner-controlled visibility in the directory. */
     isPublished: bool('is_published').notNull().default(true),
     /** Moderation state, admin-controlled. */
@@ -182,6 +187,10 @@ export const projects = sqliteTable(
     description: text('description').notNull().default(''),
     location: text('location').notNull().default(''),
     year: integer('year'),
+    status: text('status', { enum: PROJECT_STATUSES }).notNull().default('completed'),
+    /** Calendar dates as YYYY-MM-DD (no time zone ambiguity). */
+    startDate: text('start_date'),
+    endDate: text('end_date'),
     createdAt: ts('created_at').notNull().default(now),
     updatedAt: ts('updated_at').notNull().default(now),
   },
@@ -205,6 +214,129 @@ export const projectPhotos = sqliteTable(
     createdAt: ts('created_at').notNull().default(now),
   },
   (t) => [index('project_photos_project_idx').on(t.projectId, t.sortOrder), index('project_photos_profile_idx').on(t.profileId)],
+);
+
+/** Progress log entries shown as a timeline on the project page. */
+export const projectUpdates = sqliteTable(
+  'project_updates',
+  {
+    id: text('id').primaryKey(),
+    projectId: text('project_id')
+      .notNull()
+      .references(() => projects.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    /** YYYY-MM-DD */
+    date: text('date').notNull(),
+    title: text('title').notNull(),
+    body: text('body').notNull().default(''),
+    photoId: text('photo_id').references(() => projectPhotos.id, { onDelete: 'set null' }),
+    createdAt: ts('created_at').notNull().default(now),
+    updatedAt: ts('updated_at').notNull().default(now),
+  },
+  (t) => [index('project_updates_project_idx').on(t.projectId, t.date)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Community                                                           */
+/* ------------------------------------------------------------------ */
+
+export const posts = sqliteTable(
+  'posts',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    kind: text('kind', { enum: POST_KINDS }).notNull().default('update'),
+    body: text('body').notNull(),
+    projectId: text('project_id').references(() => projects.id, { onDelete: 'set null' }),
+    province: text('province').notNull().default(''),
+    city: text('city').notNull().default(''),
+    heartCount: integer('heart_count').notNull().default(0),
+    commentCount: integer('comment_count').notNull().default(0),
+    /** Moderation state, admin-controlled. */
+    status: text('status', { enum: ['active', 'hidden'] })
+      .notNull()
+      .default('active'),
+    createdAt: ts('created_at').notNull().default(now),
+    updatedAt: ts('updated_at').notNull().default(now),
+  },
+  (t) => [
+    index('posts_feed_idx').on(t.status, t.createdAt),
+    index('posts_kind_idx').on(t.kind, t.createdAt),
+    index('posts_province_idx').on(t.province, t.createdAt),
+    index('posts_profile_idx').on(t.profileId, t.createdAt),
+  ],
+);
+
+export const postPhotos = sqliteTable(
+  'post_photos',
+  {
+    id: text('id').primaryKey(),
+    postId: text('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    key: text('key').notNull().unique(),
+    sizeBytes: integer('size_bytes').notNull(),
+    sortOrder: integer('sort_order').notNull().default(0),
+    createdAt: ts('created_at').notNull().default(now),
+  },
+  (t) => [index('post_photos_post_idx').on(t.postId, t.sortOrder)],
+);
+
+export const postHearts = sqliteTable(
+  'post_hearts',
+  {
+    postId: text('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    createdAt: ts('created_at').notNull().default(now),
+  },
+  (t) => [primaryKey({ columns: [t.postId, t.userId] }), index('post_hearts_user_idx').on(t.userId)],
+);
+
+export const postComments = sqliteTable(
+  'post_comments',
+  {
+    id: text('id').primaryKey(),
+    postId: text('post_id')
+      .notNull()
+      .references(() => posts.id, { onDelete: 'cascade' }),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    body: text('body').notNull(),
+    status: text('status', { enum: ['active', 'hidden'] })
+      .notNull()
+      .default('active'),
+    createdAt: ts('created_at').notNull().default(now),
+  },
+  (t) => [index('post_comments_post_idx').on(t.postId, t.createdAt)],
+);
+
+/** In-app notifications (read on page load; no realtime push). */
+export const notifications = sqliteTable(
+  'notifications',
+  {
+    id: text('id').primaryKey(),
+    userId: text('user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    type: text('type', { enum: ['heart', 'comment'] }).notNull(),
+    actorProfileId: text('actor_profile_id').references(() => profiles.id, { onDelete: 'cascade' }),
+    postId: text('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+    readAt: ts('read_at'),
+    createdAt: ts('created_at').notNull().default(now),
+  },
+  (t) => [index('notifications_user_idx').on(t.userId, t.createdAt)],
 );
 
 /* ------------------------------------------------------------------ */
@@ -266,7 +398,8 @@ export const usageCounters = sqliteTable(
       .notNull()
       .references(() => user.id, { onDelete: 'cascade' }),
     period: text('period').notNull(),
-    kind: text('kind', { enum: ['quotation'] }).notNull(),
+    /** Quotations count per month (YYYY-MM); posts and comments per day (YYYY-MM-DD). */
+    kind: text('kind', { enum: ['quotation', 'post', 'comment'] }).notNull(),
     count: integer('count').notNull().default(0),
   },
   (t) => [primaryKey({ columns: [t.userId, t.period, t.kind] })],
@@ -341,6 +474,34 @@ export const webhookEvents = sqliteTable('webhook_events', {
 /* Moderation, audit, settings                                         */
 /* ------------------------------------------------------------------ */
 
+/**
+ * Star ratings (1–5) with a written review. One per member per profile (editing replaces it).
+ * `verified` = the author had sent this professional a quotation request while signed in.
+ */
+export const reviews = sqliteTable(
+  'reviews',
+  {
+    id: text('id').primaryKey(),
+    profileId: text('profile_id')
+      .notNull()
+      .references(() => profiles.id, { onDelete: 'cascade' }),
+    authorUserId: text('author_user_id')
+      .notNull()
+      .references(() => user.id, { onDelete: 'cascade' }),
+    rating: integer('rating').notNull(),
+    body: text('body').notNull(),
+    verified: bool('verified').notNull().default(false),
+    ownerReply: text('owner_reply'),
+    ownerReplyAt: ts('owner_reply_at'),
+    status: text('status', { enum: ['active', 'hidden'] })
+      .notNull()
+      .default('active'),
+    createdAt: ts('created_at').notNull().default(now),
+    updatedAt: ts('updated_at').notNull().default(now),
+  },
+  (t) => [uniqueIndex('reviews_profile_author_idx').on(t.profileId, t.authorUserId), index('reviews_profile_idx').on(t.profileId, t.status, t.createdAt), index('reviews_author_idx').on(t.authorUserId)],
+);
+
 export const reports = sqliteTable(
   'reports',
   {
@@ -348,6 +509,11 @@ export const reports = sqliteTable(
     profileId: text('profile_id')
       .notNull()
       .references(() => profiles.id, { onDelete: 'cascade' }),
+    /** Set when a community post or comment is reported (profileId is then its author). */
+    postId: text('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+    commentId: text('comment_id').references(() => postComments.id, { onDelete: 'cascade' }),
+    /** Set when a review is reported (profileId is then the reviewed profile). */
+    reviewId: text('review_id').references(() => reviews.id, { onDelete: 'cascade' }),
     reason: text('reason', { enum: ['spam', 'fake', 'inappropriate', 'scam', 'other'] }).notNull(),
     details: text('details').notNull().default(''),
     reporterEmail: text('reporter_email').notNull().default(''),
@@ -376,9 +542,32 @@ export const inquiries = sqliteTable(
       .notNull()
       .default('new'),
     emailSent: bool('email_sent').notNull().default(false),
+    /** Secret for the client's private conversation link (/r/<token>). NULL on requests sent before replies existed. */
+    threadToken: text('thread_token').unique(),
+    /** Set when the client was signed in, so the request also shows under their account. */
+    senderUserId: text('sender_user_id').references(() => user.id, { onDelete: 'set null' }),
+    /** Last message in either direction; drives ordering and the retention window. */
+    lastMessageAt: ts('last_message_at'),
+    /** When the client last opened the conversation; replies after this are unread for them. */
+    clientReadAt: ts('client_read_at'),
     createdAt: ts('created_at').notNull().default(now),
   },
-  (t) => [index('inquiries_profile_idx').on(t.profileId, t.status, t.createdAt)],
+  (t) => [index('inquiries_profile_idx').on(t.profileId, t.status, t.createdAt), index('inquiries_sender_idx').on(t.senderUserId)],
+);
+
+/** Replies in a quotation-request conversation (the client's first message stays on `inquiries.message`). */
+export const inquiryMessages = sqliteTable(
+  'inquiry_messages',
+  {
+    id: text('id').primaryKey(),
+    inquiryId: text('inquiry_id')
+      .notNull()
+      .references(() => inquiries.id, { onDelete: 'cascade' }),
+    sender: text('sender', { enum: ['pro', 'client'] }).notNull(),
+    body: text('body').notNull(),
+    createdAt: ts('created_at').notNull().default(now),
+  },
+  (t) => [index('inquiry_messages_inquiry_idx').on(t.inquiryId, t.createdAt)],
 );
 
 /** Operational problems (failed emails, payment errors…). One row per kind; used to throttle notifications. */

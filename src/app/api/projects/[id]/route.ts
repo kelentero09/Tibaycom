@@ -18,7 +18,7 @@ export const PATCH = route<'user', { id: string }>({ access: 'user', limit: { na
   return { ok: true };
 });
 
-export const DELETE = route<'user', { id: string }>({ access: 'user' }, async ({ user, params }) => {
+export const DELETE = route<'user', { id: string }>({ access: 'user', limit: { name: 'project-delete', max: 30, windowSeconds: 600 } }, async ({ user, params }) => {
   const profile = await requireOwnProfile(user.id);
   const db = getDb();
   const project = await db.select({ id: projects.id }).from(projects).where(owned(params.id, profile.id)).get();

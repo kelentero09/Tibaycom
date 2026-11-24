@@ -46,7 +46,7 @@ export default async function DirectoryPage({ searchParams }: Props) {
       </div>
       <DirectoryFilters
         key={JSON.stringify(query)}
-        initial={{ q: query.q ?? '', profession: query.profession ?? '', specialization: query.specialization ?? '', province: query.province ?? '', city: query.city ?? '' }}
+        initial={{ q: query.q ?? '', intent: query.intent ?? '', profession: query.profession ?? '', specialization: query.specialization ?? '', province: query.province ?? '', city: query.city ?? '' }}
       />
       {results.length === 0 ? (
         <EmptyState

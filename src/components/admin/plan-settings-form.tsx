@@ -12,9 +12,10 @@ import { ConfirmDialog } from '../ui/dialog';
 import { Field, Input } from '../ui/form';
 import { Alert } from '../ui/misc';
 
-const numericLimits: { key: 'projects' | 'photosPerProject'; label: string }[] = [
+const numericLimits: { key: 'projects' | 'photosPerProject' | 'updatesPerProject'; label: string }[] = [
   { key: 'projects', label: 'Projects' },
   { key: 'photosPerProject', label: 'Photos per project' },
+  { key: 'updatesPerProject', label: 'Timeline updates per project' },
 ];
 const featureFlags: { key: 'customQuotationBranding' | 'quotationHistory' | 'customCoverPhoto' | 'removePlatformBranding'; label: string }[] = [
   { key: 'customQuotationBranding', label: 'Custom quotation branding' },
@@ -92,6 +93,9 @@ export function PlanSettingsForm({ initial }: { initial: PlanConfig }) {
                     <Input id={`ps-${plan}-${key}`} type="number" min={0} value={limits[plan][key]} onChange={(e) => setLimit(plan, key, Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
                   </Field>
                 ))}
+                <Field label="Community posts / day" htmlFor={`ps-${plan}-posts`}>
+                  <Input id={`ps-${plan}-posts`} type="number" min={0} disabled={limits[plan].postsPerDay === null} value={limits[plan].postsPerDay ?? ''} placeholder="Unlimited" onChange={(e) => setLimit(plan, 'postsPerDay', Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
+                </Field>
                 <Field label="Quotations / month" htmlFor={`ps-${plan}-quotes`}>
                   <Input id={`ps-${plan}-quotes`} type="number" min={0} disabled={limits[plan].quotationsPerMonth === null} value={limits[plan].quotationsPerMonth ?? ''} placeholder="Unlimited" onChange={(e) => setLimit(plan, 'quotationsPerMonth', Math.max(0, Math.trunc(Number(e.target.value) || 0)))} />
                 </Field>
@@ -100,6 +104,10 @@ export function PlanSettingsForm({ initial }: { initial: PlanConfig }) {
                 <label className="flex items-center gap-2.5 text-sm">
                   <input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={limits[plan].quotationsPerMonth === null} onChange={(e) => setLimit(plan, 'quotationsPerMonth', e.target.checked ? null : 50)} />
                   Unlimited quotations
+                </label>
+                <label className="flex items-center gap-2.5 text-sm">
+                  <input type="checkbox" className="size-4 accent-[var(--color-primary)]" checked={limits[plan].postsPerDay === null} onChange={(e) => setLimit(plan, 'postsPerDay', e.target.checked ? null : 3)} />
+                  Unlimited community posts
                 </label>
                 {featureFlags.map(({ key, label }) => (
                   <label key={key} className="flex items-center gap-2.5 text-sm">

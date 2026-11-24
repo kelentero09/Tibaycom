@@ -7,6 +7,6 @@ export const PATCH = route<'user', { id: string }>({ access: 'user', limit: { na
   await updateQuotation(user.id, params.id, input);
 });
 
-export const DELETE = route<'user', { id: string }>({ access: 'user' }, async ({ user, params }) => {
+export const DELETE = route<'user', { id: string }>({ access: 'user', limit: { name: 'quotation-delete', max: 30, windowSeconds: 600 } }, async ({ user, params }) => {
   await deleteQuotation(user.id, params.id);
 });

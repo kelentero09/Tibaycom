@@ -5,15 +5,36 @@ import { useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, ImagePlus, Loader2, Pencil, Plus, Star, Trash2 } from 'lucide-react';
 import { toast } from 'sonner';
 import { api, errorMessage, isUpgradeError } from '@/lib/api-client';
+import { PROJECT_STATUS_LABELS, PROJECT_STATUS_VALUES, type ProjectStatus } from '@/lib/community';
 import { compressImage } from '@/lib/image-compress';
 import { Button } from '../ui/button';
 import { ConfirmDialog, Dialog, DialogContent, DialogTrigger } from '../ui/dialog';
-import { Field, Input, Textarea } from '../ui/form';
+import { Field, Input, Select, Textarea } from '../ui/form';
 import { Alert } from '../ui/misc';
 import { promptUpgrade } from '../upgrade-prompt';
 
 type Photo = { id: string; url: string };
-export type EditableProject = { id: string; title: string; description: string; location: string; year: number | null; photos: Photo[] };
+export type EditableProject = {
+  id: string;
+  title: string;
+  description: string;
+  location: string;
+  year: number | null;
+  status: ProjectStatus;
+  startDate: string | null;
+  endDate: string | null;
+  photos: Photo[];
+};
+
+const fieldsFrom = (p?: EditableProject) => ({
+  title: p?.title ?? '',
+  description: p?.description ?? '',
+  location: p?.location ?? '',
+  year: p?.year ? String(p.year) : '',
+  status: p?.status ?? ('completed' as ProjectStatus),
+  startDate: p?.startDate ?? '',
+  endDate: p?.endDate ?? '',
+});
 
 type Props = { project?: EditableProject; canAddProject?: boolean; /** Photos allowed in one project on the owner's plan. */ photoLimit: number };
 
@@ -23,7 +44,7 @@ export function ProjectEditor({ project, canAddProject = true, photoLimit }: Pro
   const fileInput = useRef<HTMLInputElement>(null);
   const [open, setOpen] = useState(false);
   const [current, setCurrent] = useState<EditableProject | undefined>(project);
-  const [fields, setFields] = useState({ title: project?.title ?? '', description: project?.description ?? '', location: project?.location ?? '', year: project?.year ? String(project.year) : '' });
+  const [fields, setFields] = useState(() => fieldsFrom(project));
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(0);
@@ -35,7 +56,7 @@ export function ProjectEditor({ project, canAddProject = true, photoLimit }: Pro
 
   const reset = () => {
     setCurrent(project);
-    setFields({ title: project?.title ?? '', description: project?.description ?? '', location: project?.location ?? '', year: project?.year ? String(project.year) : '' });
+    setFields(fieldsFrom(project));
     setError(null);
   };
 
@@ -43,7 +64,7 @@ export function ProjectEditor({ project, canAddProject = true, photoLimit }: Pro
     event.preventDefault();
     setSaving(true);
     setError(null);
-    const body = { ...fields, year: fields.year ? Number(fields.year) : null };
+    const body = { ...fields, year: fields.year ? Number(fields.year) : null, startDate: fields.startDate || null, endDate: fields.endDate || null };
     try {
       if (current) {
         await api(`/api/projects/${current.id}`, { method: 'PATCH', body });
@@ -198,6 +219,23 @@ export function ProjectEditor({ project, canAddProject = true, photoLimit }: Pro
               </Field>
               <Field label="Year" htmlFor="pj-year">
                 <Input id="pj-year" type="number" inputMode="numeric" min={1950} max={new Date().getFullYear() + 1} value={fields.year} onChange={(e) => setFields({ ...fields, year: e.target.value })} />
+              </Field>
+            </div>
+            <div className="grid gap-4 sm:grid-cols-3">
+              <Field label="Status" htmlFor="pj-status">
+                <Select id="pj-status" value={fields.status} onChange={(e) => setFields({ ...fields, status: e.target.value as ProjectStatus })}>
+                  {PROJECT_STATUS_VALUES.map((s) => (
+                    <option key={s} value={s}>
+                      {PROJECT_STATUS_LABELS[s]}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Start date" htmlFor="pj-start">
+                <Input id="pj-start" type="date" value={fields.startDate} onChange={(e) => setFields({ ...fields, startDate: e.target.value })} />
+              </Field>
+              <Field label={fields.status === 'completed' ? 'Completed on' : 'Target finish'} htmlFor="pj-end">
+                <Input id="pj-end" type="date" value={fields.endDate} min={fields.startDate || undefined} onChange={(e) => setFields({ ...fields, endDate: e.target.value })} />
               </Field>
             </div>
 

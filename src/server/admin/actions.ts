@@ -1,5 +1,5 @@
 import 'server-only';
-import { and, eq, sql } from 'drizzle-orm';
+import { and, desc, eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { planConfigSchema } from '@/lib/plans';
 import { audit } from '../audit';
@@ -18,6 +18,11 @@ export const adminActionSchemas = {
   'profile.suspend': z.object({ profileId: id }),
   'profile.restore': z.object({ profileId: id }),
   'project.delete': z.object({ projectId: id }),
+  'post.hide': z.object({ postId: id }),
+  'post.restore': z.object({ postId: id }),
+  'comment.hide': z.object({ commentId: id }),
+  'review.hide': z.object({ reviewId: id }),
+  'review.restore': z.object({ reviewId: id }),
   'report.resolve': z.object({ reportId: id }),
   'report.dismiss': z.object({ reportId: id }),
   'subscription.grant': z.object({ userId: id, days: z.number().int().min(1).max(366) }),
@@ -39,20 +44,30 @@ const handlers: Handlers = {
     const target = await db.select({ role: schema.user.role }).from(schema.user).where(eq(schema.user.id, userId)).get();
     if (!target) throw new ApiError(404, 'User not found.');
     if (target.role === 'admin') throw new ApiError(400, 'Administrator accounts cannot be banned from the dashboard.');
+    // Remember whether the ban is what suspends the profile, so an unban never undoes a separate moderation suspension.
+    const profile = await db.select({ status: schema.profiles.status }).from(schema.profiles).where(eq(schema.profiles.userId, userId)).get();
+    const profileWasActive = profile?.status === 'active';
     await db.batch([
       db.update(schema.user).set({ banned: true, banReason: reason || 'Violation of terms', updatedAt: new Date() }).where(eq(schema.user.id, userId)),
       db.delete(schema.session).where(eq(schema.session.userId, userId)), // sign out everywhere, immediately
       db.update(schema.profiles).set({ status: 'suspended', updatedAt: new Date() }).where(eq(schema.profiles.userId, userId)),
     ]);
-    return { targetType: 'user', targetId: userId, metadata: { reason } };
+    return { targetType: 'user', targetId: userId, metadata: { reason, profileWasActive } };
   },
   'user.unban': async ({ userId }) => {
     const db = getDb();
-    await db.batch([
-      db.update(schema.user).set({ banned: false, banReason: null, banExpires: null, updatedAt: new Date() }).where(eq(schema.user.id, userId)),
-      db.update(schema.profiles).set({ status: 'active', updatedAt: new Date() }).where(eq(schema.profiles.userId, userId)),
-    ]);
-    return { targetType: 'user', targetId: userId };
+    const lastBan = await db
+      .select({ metadata: schema.auditLogs.metadata })
+      .from(schema.auditLogs)
+      .where(and(eq(schema.auditLogs.action, 'admin.user.ban'), eq(schema.auditLogs.targetId, userId)))
+      .orderBy(desc(schema.auditLogs.createdAt))
+      .get();
+    // Older bans have no flag: keep the previous behaviour (restore) for them.
+    const restoreProfile = lastBan?.metadata?.profileWasActive !== false;
+    const unban = db.update(schema.user).set({ banned: false, banReason: null, banExpires: null, updatedAt: new Date() }).where(eq(schema.user.id, userId));
+    if (restoreProfile) await db.batch([unban, db.update(schema.profiles).set({ status: 'active', updatedAt: new Date() }).where(eq(schema.profiles.userId, userId))]);
+    else await unban;
+    return { targetType: 'user', targetId: userId, metadata: { profileRestored: restoreProfile } };
   },
   'profile.suspend': async ({ profileId }) => {
     const updated = await getDb().update(schema.profiles).set({ status: 'suspended', updatedAt: new Date() }).where(eq(schema.profiles.id, profileId)).returning({ id: schema.profiles.id });
@@ -73,6 +88,22 @@ const handlers: Handlers = {
     await deleteImages(photos.map((p) => p.key));
     return { targetType: 'project', targetId: projectId, metadata: { title: project.title, profileId: project.profileId, photos: photos.length } };
   },
+  'post.hide': ({ postId }) => setPostStatus(postId, 'hidden'),
+  'post.restore': ({ postId }) => setPostStatus(postId, 'active'),
+  'comment.hide': async ({ commentId }) => {
+    const db = getDb();
+    const updated = await db
+      .update(schema.postComments)
+      .set({ status: 'hidden' })
+      .where(eq(schema.postComments.id, commentId))
+      .returning({ postId: schema.postComments.postId });
+    if (!updated.length) throw new ApiError(404, 'Comment not found.');
+    const postId = updated[0]!.postId;
+    await db.run(sql`UPDATE posts SET comment_count = (SELECT COUNT(*) FROM post_comments WHERE post_id = ${postId} AND status = 'active') WHERE id = ${postId}`);
+    return { targetType: 'comment', targetId: commentId, metadata: { postId } };
+  },
+  'review.hide': ({ reviewId }) => setReviewStatus(reviewId, 'hidden'),
+  'review.restore': ({ reviewId }) => setReviewStatus(reviewId, 'active'),
   'report.resolve': ({ reportId }, ctx) => closeReport(reportId, 'resolved', ctx),
   'report.dismiss': ({ reportId }, ctx) => closeReport(reportId, 'dismissed', ctx),
   'subscription.grant': async ({ userId, days }) => {
@@ -115,6 +146,18 @@ const handlers: Handlers = {
     return { targetType: 'settings', targetId: PLAN_SETTINGS_KEY, metadata: { pricing: config.pricing } };
   },
 };
+
+async function setPostStatus(postId: string, status: 'active' | 'hidden') {
+  const updated = await getDb().update(schema.posts).set({ status, updatedAt: new Date() }).where(eq(schema.posts.id, postId)).returning({ id: schema.posts.id });
+  if (!updated.length) throw new ApiError(404, 'Post not found.');
+  return { targetType: 'post', targetId: postId };
+}
+
+async function setReviewStatus(reviewId: string, status: 'active' | 'hidden') {
+  const updated = await getDb().update(schema.reviews).set({ status }).where(eq(schema.reviews.id, reviewId)).returning({ id: schema.reviews.id });
+  if (!updated.length) throw new ApiError(404, 'Review not found.');
+  return { targetType: 'review', targetId: reviewId };
+}
 
 async function closeReport(reportId: string, status: 'resolved' | 'dismissed', { admin }: Ctx) {
   const updated = await getDb().update(schema.reports).set({ status, resolvedBy: admin.id, resolvedAt: new Date() }).where(eq(schema.reports.id, reportId)).returning({ id: schema.reports.id });

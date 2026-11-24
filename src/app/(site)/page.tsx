@@ -1,20 +1,42 @@
 import Link from 'next/link';
 import { ArrowRight, Check, FileText, Images, QrCode, Search } from 'lucide-react';
+import { PostCard } from '@/components/community/post-card';
+import { MemberHome } from '@/components/home/member-home';
 import { PricingTable } from '@/components/pricing-table';
 import { ProfessionalCard } from '@/components/professional-card';
 import { Button } from '@/components/ui/button';
 import { PROFESSIONS } from '@/lib/professions';
+import { feedQuerySchema } from '@/lib/validation';
 import { getSession } from '@/server/auth';
+import { getFeed } from '@/server/community';
 import { getPlanConfig } from '@/server/entitlements';
 import { getT } from '@/server/locale';
-import { searchDirectory } from '@/server/profiles';
+import { getEnv } from '@/server/db';
+import { getMemberAvatars, searchDirectory } from '@/server/profiles';
+import { getCommunityStats } from '@/server/reviews';
+import { imageUrl } from '@/server/storage';
 
 const featureIcons = [Images, FileText, Search, QrCode];
+/**
+ * Member count for the hero. Local/demo environments show a placeholder "10,000+"; in production it is always the
+ * real total (rounded down, e.g. "120+"), and is left out until it reaches SOCIAL_PROOF_MIN.
+ */
+const DEMO_MEMBER_COUNT = 10_000;
+const SOCIAL_PROOF_MIN = 20;
+const roundDown = (n: number) => (n >= 1000 ? Math.floor(n / 100) * 100 : n >= 100 ? Math.floor(n / 10) * 10 : n);
+const memberLabel = (n: number) => `${roundDown(n).toLocaleString('en-PH')}${n >= DEMO_MEMBER_COUNT || n > roundDown(n) ? '+' : ''} members`;
+
 const featuredProfessions = ['general-contractor', 'architect', 'civil-engineer', 'electrician', 'plumber', 'carpenter', 'painter', 'welder'];
 
 export default async function HomePage() {
-  const [config, latest, t, session] = await Promise.all([getPlanConfig(), searchDirectory({ page: 1 }), getT(), getSession()]);
-  const joinHref = session ? '/onboarding' : '/register';
+  const session = await getSession();
+  // Members get their own home: shortcuts, the community feed and professionals nearby.
+  if (session) return <MemberHome user={{ id: session.user.id, name: session.user.name }} />;
+  const [config, latest, t, stats, faces, feed] = await Promise.all([getPlanConfig(), searchDirectory({ page: 1 }), getT(), getCommunityStats(), getMemberAvatars(5), getFeed(feedQuerySchema.parse({}), null)]);
+  const posts = [...feed.featured, ...feed.posts].slice(0, 6);
+  const joinHref = '/register';
+  const members = getEnv().APP_ENV === 'production' ? stats.members : DEMO_MEMBER_COUNT;
+  const membersText = members >= SOCIAL_PROOF_MIN ? `Joined by ${memberLabel(members)} and growing` : 'Join builders across the Philippines';
   return (
     <>
       <section className="relative overflow-hidden border-b bg-subtle">
@@ -47,6 +69,25 @@ export default async function HomePage() {
               </li>
             ))}
           </ul>
+          <div className="stagger flex flex-wrap items-center gap-3" style={{ '--i': 5 } as React.CSSProperties}>
+            {faces.length > 0 && (
+              <ul className="flex -space-x-2.5" aria-hidden>
+                {faces.map((f) => (
+                  <li key={f.username} className="size-9 overflow-hidden rounded-full border-2 border-background bg-muted shadow-card">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img src={imageUrl(f.avatarKey)!} alt="" loading="lazy" decoding="async" className="size-full object-cover" />
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-sm font-medium">{membersText}</p>
+          </div>
+          <p className="stagger text-sm text-muted-foreground" style={{ '--i': 6 } as React.CSSProperties}>
+            Already a member?{' '}
+            <Link href="/login" className="font-medium text-accent underline-offset-4 hover:underline">
+              Log in
+            </Link>
+          </p>
         </div>
       </section>
 
@@ -69,6 +110,43 @@ export default async function HomePage() {
           })}
         </ul>
       </section>
+
+      {posts.length > 0 && (
+        <section className="border-t bg-subtle" aria-labelledby="community-heading">
+          <div className="container-page grid gap-6 py-16">
+            <div className="flex flex-wrap items-end justify-between gap-4">
+              <div className="grid gap-1.5">
+                <h2 id="community-heading" className="text-2xl font-semibold sm:text-3xl">
+                  Latest from the community
+                </h2>
+                <p className="text-muted-foreground">Site updates, finished projects, crews hiring and people looking for work — happening now on Tibay.</p>
+              </div>
+              <Link href="/community" className="shrink-0 text-sm font-medium text-accent underline-offset-4 hover:underline">
+                See all posts →
+              </Link>
+            </div>
+            <ul className="grid items-start gap-4 lg:grid-cols-2">
+              {posts.map((post) => (
+                <li key={post.id}>
+                  {/* Visitors can read everything; hearting or commenting sends them to log in first. */}
+                  <PostCard post={post} viewer={{ signedIn: false, isAuthor: false }} />
+                </li>
+              ))}
+            </ul>
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border bg-background p-4 shadow-card">
+              <p className="text-sm text-muted-foreground">Join free to post updates, heart and comment.</p>
+              <div className="flex gap-2">
+                <Button asChild variant="outline" size="sm">
+                  <Link href="/login?next=/community">Log in</Link>
+                </Button>
+                <Button asChild size="sm" variant="accent">
+                  <Link href={joinHref}>Join free</Link>
+                </Button>
+              </div>
+            </div>
+          </div>
+        </section>
+      )}
 
       <section className="border-y bg-primary text-primary-foreground" aria-labelledby="steps-heading">
         <div className="container-page grid gap-8 py-16">

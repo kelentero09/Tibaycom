@@ -12,7 +12,7 @@ import { Button } from './ui/button';
 import { Dialog, DialogContent } from './ui/dialog';
 
 /** The moment a user runs into a plan limit. Each has its own message so the prompt explains exactly what they gain. */
-export type UpgradeReason = 'projects' | 'photos' | 'quotations' | 'cover' | 'history' | 'branding' | 'generic';
+export type UpgradeReason = 'projects' | 'photos' | 'quotations' | 'cover' | 'history' | 'branding' | 'posts' | 'updates' | 'generic';
 export const UPGRADE_EVENT = 'tibay:upgrade';
 
 /** Opens the upgrade dialog from anywhere (also fired automatically by the API client on a plan-limit response). */
@@ -28,6 +28,8 @@ const copy = (premium: PlanLimits): Record<UpgradeReason, Copy> => ({
   cover: { title: 'Make your profile yours', body: 'A custom cover photo is the first thing clients see. It’s included with Premium.' },
   history: { title: 'Your past quotations are saved', body: 'Premium unlocks your full quotation history — open, edit and reuse any quotation you’ve made.' },
   branding: { title: 'Put your logo on every quotation', body: 'Premium adds your logo to quotations and removes the “Made with Tibay” footer.' },
+  posts: { title: 'You’ve posted a lot today', body: 'Free accounts can share a few community posts a day. With Premium you can post as often as you like and share every update from site.' },
+  updates: { title: 'This timeline is full', body: `Premium lets you log ${premium.updatesPerProject} progress updates per project, so clients can follow the build from groundwork to turnover.` },
   generic: { title: 'Do more with Premium', body: 'More projects, more photos per project, more quotations and your own branding.' },
 });
 

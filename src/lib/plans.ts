@@ -9,6 +9,10 @@ const limitsSchema = z.object({
   photosPerProject: z.number().int().min(0).max(50),
   /** Quotations that can be created per calendar month. `null` = unlimited. */
   quotationsPerMonth: z.number().int().min(0).max(100000).nullable(),
+  /** Timeline entries in ONE project. Defaults keep older stored configs valid. */
+  updatesPerProject: z.number().int().min(0).max(500).default(3),
+  /** Community posts per day (Manila time). `null` = unlimited. */
+  postsPerDay: z.number().int().min(0).max(1000).nullable().default(3),
   customQuotationBranding: z.boolean(),
   quotationHistory: z.boolean(),
   customCoverPhoto: z.boolean(),
@@ -38,6 +42,8 @@ export const DEFAULT_PLAN_CONFIG: PlanConfig = {
       projects: 2,
       photosPerProject: 2,
       quotationsPerMonth: 2,
+      updatesPerProject: 3,
+      postsPerDay: 3,
       customQuotationBranding: false,
       quotationHistory: false,
       customCoverPhoto: false,
@@ -47,6 +53,8 @@ export const DEFAULT_PLAN_CONFIG: PlanConfig = {
       projects: 50,
       photosPerProject: 10,
       quotationsPerMonth: null,
+      updatesPerProject: 30,
+      postsPerDay: null,
       customQuotationBranding: true,
       quotationHistory: true,
       customCoverPhoto: true,
@@ -60,6 +68,11 @@ export const DEFAULT_PLAN_CONFIG: PlanConfig = {
 export const formatQuota = (value: number | null) => (value === null ? 'Unlimited' : String(value));
 
 /** Upload constraints shared by client (pre-compression target) and server (hard validation). */
+/** Spam guard for comments; the same for every plan. */
+export const COMMENTS_PER_DAY = 30;
+/** Photos attached to one community post. */
+export const PHOTOS_PER_POST = 4;
+
 export const IMAGE_RULES = {
   maxBytes: 1_500_000,
   maxDimension: 1920,

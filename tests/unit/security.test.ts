@@ -72,7 +72,7 @@ describe('input validation', () => {
     for (const bad of ['ab', 'admin', 'api', '-juan', 'juan-', 'ju--an', 'juan dela cruz', 'juan/../x', '<script>', 'a'.repeat(31)]) expect(usernameSchema.safeParse(bad).success).toBe(false);
   });
   it('accepts listed professions and sensible typed ones, and rejects markup or junk', () => {
-    const base = { username: 'juan-builders', businessName: 'Juan Builders', province: 'Cebu', city: 'Argao' };
+    const base = { username: 'juan-builders', intent: 'seeking_clients', businessName: 'Juan Builders', province: 'Cebu', city: 'Argao' };
     const ok = onboardingSchema.safeParse({ ...base, professions: ['mason', 'carpenter', 'Scaffolder', 'Drywall & Ceiling Installer', 'scaffolder'] });
     expect(ok.success && ok.data.professions).toEqual(['mason', 'carpenter', 'scaffolder', 'Drywall & Ceiling Installer']); // case-insensitive de-duplication
     for (const bad of ['<script>alert(1)</script>', 'x', 'a'.repeat(41), '   ', 'Robert"); DROP TABLE user;--', 'line\nbreak'])
@@ -81,15 +81,23 @@ describe('input validation', () => {
     expect(onboardingSchema.safeParse({ ...base, professions: [] }).success).toBe(false);
   });
 
+  it('lets homeowners join without a profession, and requires a known intent', () => {
+    const base = { username: 'maria-home', businessName: 'Maria Santos', province: 'Cebu', city: 'Argao', professions: [] };
+    expect(onboardingSchema.safeParse({ ...base, intent: 'seeking_contractor' }).success).toBe(true);
+    expect(onboardingSchema.safeParse({ ...base, intent: 'seeking_work' }).success).toBe(false);
+    expect(onboardingSchema.safeParse({ ...base, intent: 'admin', professions: ['mason'] }).success).toBe(false);
+    expect(onboardingSchema.safeParse({ ...base, professions: ['mason'] }).success).toBe(false); // intent is required
+  });
+
   it('requires the city to belong to the province', () => {
-    const base = { username: 'juan-builders', businessName: 'Juan Builders', professions: ['mason'] };
+    const base = { username: 'juan-builders', intent: 'seeking_clients', businessName: 'Juan Builders', professions: ['mason'] };
     expect(onboardingSchema.safeParse({ ...base, province: 'Cebu', city: 'Argao' }).success).toBe(true);
     expect(onboardingSchema.safeParse({ ...base, province: 'Cebu', city: 'Quezon City' }).success).toBe(false);
     expect(onboardingSchema.safeParse({ ...base, province: 'Atlantis', city: 'Argao' }).success).toBe(false);
     expect(onboardingSchema.safeParse({ ...base, province: 'Cebu', city: 'Argao', professions: ['<b>hacker</b>'] }).success).toBe(false);
   });
 
-  const profile = { businessName: 'Juan Builders', bio: '', professions: ['mason'], specializations: ['Plastering', 'Solar PV'], services: [], yearsExperience: 5, province: 'Cebu', city: 'Argao', serviceAreas: [], phone: '', contactEmail: '', facebookUrl: '', messengerUrl: '', isPublished: true };
+  const profile = { intent: 'seeking_clients', businessName: 'Juan Builders', bio: '', professions: ['mason'], specializations: ['Plastering', 'Solar PV'], services: [], yearsExperience: 5, province: 'Cebu', city: 'Argao', serviceAreas: [], phone: '', contactEmail: '', facebookUrl: '', messengerUrl: '', isPublished: true };
   it('only allows https links on the expected social domains', () => {
     expect(profileUpdateSchema.safeParse({ ...profile, facebookUrl: 'https://www.facebook.com/juanbuilders', messengerUrl: 'https://m.me/juanbuilders' }).success).toBe(true);
     for (const bad of ['javascript:alert(1)', 'http://facebook.com/x', 'https://facebook.com.evil.example/x', 'https://evil.example/facebook.com', 'data:text/html,<script>'])

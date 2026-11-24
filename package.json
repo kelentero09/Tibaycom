@@ -18,6 +18,7 @@
     "db:migrate:local": "wrangler d1 migrations apply tibay --local",
     "db:migrate:remote": "wrangler d1 migrations apply tibay --remote",
     "db:seed": "node scripts/seed.mjs",
+    "db:seed:demo": "node scripts/seed-demo.mjs",
     "admin:promote": "node scripts/make-admin.mjs",
     "test:unit": "vitest run tests/unit",
     "test:integration": "vitest run tests/integration",

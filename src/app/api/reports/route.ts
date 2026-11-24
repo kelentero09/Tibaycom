@@ -7,8 +7,12 @@ export const POST = route({ access: 'public', limit: { name: 'report', max: 5, w
   const input = await parseBody(request, reportSchema);
   await verifyTurnstile(input.turnstileToken, ip);
   const db = getDb();
-  const profile = await db.select({ id: schema.profiles.id }).from(schema.profiles).where(eq(schema.profiles.username, input.username)).get();
-  if (!profile) throw new ApiError(404, 'Profile not found.');
+  const profile = await db
+    .select({ id: schema.profiles.id, isPublished: schema.profiles.isPublished, status: schema.profiles.status })
+    .from(schema.profiles)
+    .where(eq(schema.profiles.username, input.username))
+    .get();
+  if (!profile || !profile.isPublished || profile.status !== 'active') throw new ApiError(404, 'Profile not found.');
   await db.insert(schema.reports).values({ id: newId(), profileId: profile.id, reason: input.reason, details: input.details, reporterEmail: input.reporterEmail });
   return { ok: true };
 });

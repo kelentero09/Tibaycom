@@ -9,7 +9,7 @@ export const LOCALE_COOKIE = 'lang';
 export const isLocale = (value: unknown): value is Locale => LOCALES.includes(value as Locale);
 
 const en = {
-  nav: { find: 'Find professionals', pricing: 'Pricing', login: 'Log in', join: 'Join free', language: 'Filipino' },
+  nav: { find: 'Find professionals', community: 'Community', pricing: 'Pricing', login: 'Log in', join: 'Join free', language: 'Filipino' },
   footer: {
     tagline: 'The online home of Filipino contractors, architects, engineers and skilled workers.',
     directory: 'Directory',
@@ -91,7 +91,7 @@ const en = {
 export type Dictionary = typeof en;
 
 const fil: Dictionary = {
-  nav: { find: 'Maghanap ng gagawa', pricing: 'Presyo', login: 'Mag-log in', join: 'Sumali nang libre', language: 'English' },
+  nav: { find: 'Maghanap ng gagawa', community: 'Komunidad', pricing: 'Presyo', login: 'Mag-log in', join: 'Sumali nang libre', language: 'English' },
   footer: {
     tagline: 'Ang online na tahanan ng mga Pilipinong contractor, arkitekto, engineer at skilled worker.',
     directory: 'Direktoryo',

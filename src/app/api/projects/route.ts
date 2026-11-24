@@ -12,8 +12,8 @@ export const POST = route({ access: 'user', limit: { name: 'project-write', max:
   const now = Date.now();
   // Limit check and insert in ONE statement, so parallel requests cannot exceed the plan limit.
   const inserted = await getDb().all<{ id: string }>(sql`
-    INSERT INTO projects (id, profile_id, title, description, location, year, created_at, updated_at)
-    SELECT ${id}, ${profile.id}, ${input.title}, ${input.description}, ${input.location}, ${input.year}, ${now}, ${now}
+    INSERT INTO projects (id, profile_id, title, description, location, year, status, start_date, end_date, created_at, updated_at)
+    SELECT ${id}, ${profile.id}, ${input.title}, ${input.description}, ${input.location}, ${input.year}, ${input.status}, ${input.startDate}, ${input.endDate}, ${now}, ${now}
     WHERE (SELECT COUNT(*) FROM projects WHERE profile_id = ${profile.id}) < ${entitlements.limits.projects}
     RETURNING id`);
   if (!inserted.length)
